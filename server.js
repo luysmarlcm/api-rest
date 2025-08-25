@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import apiService from './apiService.js';
 import cors from 'cors'; // Importar el middleware de cors
 
-// Obtener la ruta del directorio actual
+// Obtener la ruta del directorio actualg
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -37,6 +37,12 @@ const ZONE_MAPPING = {
   },
 };
 
+const SERVERS_815 = [
+  { name: 'S1', url: process.env.URL_815_G1, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01 },
+  { name: 'S2', url: process.env.URL_815_G2, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1 },
+  { name: 'S3', url: process.env.URL_815_G3, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_GTRE01 },
+];
+
 // Middleware para parsear JSON si fuera necesario
 app.use(express.json());
 
@@ -50,12 +56,12 @@ app.get('/api/clientes', async (req, res) => {
     let clientes;
     if (zona) {
       console.log(`--- Solicitud para clientes de la zona: ${zona} ---`);
-      // Llama a la nueva función que filtra por zona
+      // Llama a la función que filtra por zona
       clientes = await apiService.fetchAndCombineClientsByZone(zona, ZONE_MAPPING);
     } else {
       console.log('--- Solicitud para todos los clientes (sin especificar zona) ---');
-      // Llama a la función que combina todos los clientes, como en el código original
-      clientes = await apiService.fetchAndCombineAllClients(ZONE_MAPPING);
+      // ✅ Aquí usamos SERVERS_815 que es un array iterable
+      clientes = await apiService.fetchAndCombineAllClients(SERVERS_815);
     }
     res.status(200).json(clientes);
   } catch (error) {
