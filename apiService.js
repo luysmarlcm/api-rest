@@ -110,6 +110,55 @@ const apiService = {
     }
   },
 
+    // 🔹 Unir datos de clientes por zona específica
+   // 🔹 Unir datos de clientes por zona específica
+  fetchAndCombineClientsByZone: async (zoneName, ZONE_MAPPING) => {
+    try {
+      console.log(`--- Iniciando unión de clientes para la zona: ${zoneName} ---`);
+
+      // 1️⃣ Buscar servidor 815 correspondiente
+      const correct815Entry = ZONE_MAPPING[zoneName];
+      if (!correct815Entry) {
+        return { message: `No se encontró un servidor 815 para la zona: ${zoneName}` };
+      }
+
+      // 2️⃣ Obtener clientes de ese servidor 815
+      const enrichedData = await apiService.fetchAndEnrich815Data(correct815Entry);
+      console.log(`✅ Datos obtenidos de 815 (${zoneName}): ${enrichedData.length}`);
+
+      // 3️⃣ Obtener clientes de WispHub
+      const allWispHubClients = await apiService.fetchWispHubClients();
+      console.log(`✅ Datos totales obtenidos de WispHub: ${allWispHubClients.length}`);
+
+      // 4️⃣ Crear mapa de WispHub por id_servicio
+      const mapaWispHub = {};
+      allWispHubClients.forEach(cliente => {
+        if (cliente.id_servicio) {
+          mapaWispHub[cliente.id_servicio] = cliente;
+        }
+      });
+
+      // 5️⃣ Unir clientes de 815 con WispHub
+      const clientesUnidos = [];
+      enrichedData.forEach(cliente815 => {
+        const clienteWispHub = mapaWispHub[cliente815.conector];
+        if (clienteWispHub) {
+          clientesUnidos.push({
+            ...cliente815,
+            ...clienteWispHub
+          });
+        }
+      });
+
+      console.log(`--- Unión finalizada (${zoneName}). Total clientes unidos: ${clientesUnidos.length}`);
+      return clientesUnidos;
+
+    } catch (error) {
+      console.error(`❌ Error al unir clientes de la zona ${zoneName}:`, error.message);
+      return [];
+    }
+  },
+
   // 🔹 Unir datos de todos los servidores 815 con WispHub
   fetchAndCombineAllClients: async (SERVERS_815) => {
     console.log('--- Iniciando unión de datos entre 815 y WispHub ---');
@@ -148,85 +197,85 @@ const apiService = {
   },
 
   // 🔹 Buscar cliente por cédula
-fetchClientByCedula: async (cedula, ZONE_MAPPING) => {
-  try {
-    const apiKey = process.env.WISPHUB_API_KEY;
-    const apiUrl = process.env.API_URL;
-
-    console.log(`--- Buscando cliente con cédula ${cedula} en WispHub ---`);
-    
-    // 1️⃣ Buscar cliente en WispHub
-    const responseWispHub = await axios.get(`${apiUrl}/api/clientes/?cedula=${cedula}`, {
-      headers: {
-        'Authorization': `Api-Key ${apiKey}`,
-        'Accept': 'application/json'
-      }
-    });
-
-    const foundClientWispHub = responseWispHub.data.results[0];
-    if (!foundClientWispHub) {
-      return { message: `Cliente con cédula ${cedula} no encontrado en WispHub.` };
-    }
-
-    // 2️⃣ Obtener información del servidor 815 correspondiente a la zona
-    const zoneName = foundClientWispHub.zona.nombre;
-    const correct815Entry = ZONE_MAPPING[zoneName];
-    if (!correct815Entry) {
-      return { message: `No se encontró una URL de servidor 815 para la zona: ${zoneName}` };
-    }
-
-    console.log(`✅ Cliente encontrado en WispHub. Zona: ${zoneName}.`);
-    
-    const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
-    const direct815SearchUrl = `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/listar?&json&extra_1=${cedula}`;
-    
-    // 3️⃣ Buscar cliente en 815
-    const response815 = await axios.get(direct815SearchUrl, {
-      httpsAgent: agent,
-      headers: { 'Authorization': `Basic ${basicAuthToken}` },
-    });
-
-    const foundClient815 = response815.data[0];
-    if (!foundClient815) {
-      return { message: `Cliente con cédula ${cedula} no encontrado en 815.` };
-    }
-
-    // 4️⃣ Enriquecer cliente 815
-    const enrichedClient = await apiService.enrich815Client(foundClient815, correct815Entry.url, basicAuthToken);
-
-    // 5️⃣ Consultar diagnóstico usando pk de conexión
-    let diagnostico = {};
+  fetchClientByCedula: async (cedula, ZONE_MAPPING) => {
     try {
-      const pkConexion = foundClient815.pk; // reemplaza si tu pk real está en otro campo
-      const diagnosticoResponse = await axios.get(
-        `${correct815Entry.url}/gateway/integracion/hardware/nodored/diagnosticar_multiapi/?pk_conexion=${pkConexion}&json`,
-        {
-          httpsAgent: agent,
-          headers: { 'Authorization': `Basic ${basicAuthToken}` },
+      const apiKey = process.env.WISPHUB_API_KEY;
+      const apiUrl = process.env.API_URL;
+
+      console.log(`--- Buscando cliente con cédula ${cedula} en WispHub ---`);
+      
+      // 1️⃣ Buscar cliente en WispHub
+      const responseWispHub = await axios.get(`${apiUrl}/api/clientes/?cedula=${cedula}`, {
+        headers: {
+          'Authorization': `Api-Key ${apiKey}`,
+          'Accept': 'application/json'
         }
-      );
-      diagnostico = diagnosticoResponse.data; // contiene conexion, olt, onu, etc.
+      });
+
+      const foundClientWispHub = responseWispHub.data.results[0];
+      if (!foundClientWispHub) {
+        return { message: `Cliente con cédula ${cedula} no encontrado en WispHub.` };
+      }
+
+      // 2️⃣ Obtener información del servidor 815 correspondiente a la zona
+      const zoneName = foundClientWispHub.zona.nombre;
+      const correct815Entry = ZONE_MAPPING[zoneName];
+      if (!correct815Entry) {
+        return { message: `No se encontró una URL de servidor 815 para la zona: ${zoneName}` };
+      }
+
+      console.log(`✅ Cliente encontrado en WispHub. Zona: ${zoneName}.`);
+      
+      const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
+      const direct815SearchUrl = `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/listar?&json&extra_1=${cedula}`;
+      
+      // 3️⃣ Buscar cliente en 815
+      const response815 = await axios.get(direct815SearchUrl, {
+        httpsAgent: agent,
+        headers: { 'Authorization': `Basic ${basicAuthToken}` },
+      });
+
+      const foundClient815 = response815.data[0];
+      if (!foundClient815) {
+        return { message: `Cliente con cédula ${cedula} no encontrado en 815.` };
+      }
+
+      // 4️⃣ Enriquecer cliente 815
+      const enrichedClient = await apiService.enrich815Client(foundClient815, correct815Entry.url, basicAuthToken);
+
+      // 5️⃣ Consultar diagnóstico usando pk de conexión
+      let diagnostico = {};
+      try {
+        const pkConexion = foundClient815.pk; // reemplaza si tu pk real está en otro campo
+        const diagnosticoResponse = await axios.get(
+          `${correct815Entry.url}/gateway/integracion/hardware/nodored/diagnosticar_multiapi/?pk_conexion=${pkConexion}&json`,
+          {
+            httpsAgent: agent,
+            headers: { 'Authorization': `Basic ${basicAuthToken}` },
+          }
+        );
+        diagnostico = diagnosticoResponse.data; // contiene conexion, olt, onu, etc.
+      } catch (error) {
+        console.error('❌ Error al consultar diagnóstico:', error.message);
+      }
+
+      // 6️⃣ Unir todo al JSON final
+      const clientesUnidos = { 
+        ...foundClientWispHub, 
+        ...enrichedClient,
+        ...diagnostico // 🔹 hace spread de todas las propiedades del diagnóstico
+      };
+      
+      return clientesUnidos;
+
     } catch (error) {
-      console.error('❌ Error al consultar diagnóstico:', error.message);
+      console.error('❌ Error al procesar la búsqueda por cédula.', error.message);
+      if (error.response) {
+        console.error('Detalles del error HTTP:', error.response.status, error.response.data);
+      }
+      throw error;
     }
-
-    // 6️⃣ Unir todo al JSON final
-    const clientesUnidos = { 
-      ...foundClientWispHub, 
-      ...enrichedClient,
-      ...diagnostico // 🔹 hace spread de todas las propiedades del diagnóstico
-    };
-    
-    return clientesUnidos;
-
-  } catch (error) {
-    console.error('❌ Error al procesar la búsqueda por cédula.', error.message);
-    if (error.response) {
-      console.error('Detalles del error HTTP:', error.response.status, error.response.data);
-    }
-    throw error;
-  }
-},
+  },
 
 
  

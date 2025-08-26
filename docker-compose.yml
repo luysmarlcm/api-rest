@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  # Define el servicio para tu API de Node.js
+  api:
+    # Indica a Docker que busque el Dockerfile en el directorio actual
+    build: .
+    # Mapea el puerto de tu computadora (host) al puerto del contenedor
+    # Esto te permitirá acceder a la API desde tu navegador
+    ports:
+      - "4000:4000"
+    # Mapea el volumen del código para que cualquier cambio que hagas en tu
+    # máquina se refleje en el contenedor sin tener que reconstruir la imagen
+    volumes:
+      - .:/usr/src/app
+    # Reinicia el contenedor automáticamente si falla
+    restart: always
