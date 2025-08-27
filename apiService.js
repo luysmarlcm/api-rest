@@ -483,9 +483,11 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
 
 
     // 🔹 Crear conexión para el cliente usando el pk generado
+    const nombreConexion = `${conector}${nombre}`; 
+
     const createConexionUrl =
       `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/crear/` +
-      `?nombre=${encodeURIComponent(nombre)}` +
+      `?nombre=${encodeURIComponent(nombreConexion)}` +
       `&ciudad=${ciudad}` +
       `&cliente=${clientePk}` +
       `&domicilio=${encodeURIComponent(domicilio)}` +
@@ -515,6 +517,37 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
     return { message: "Error al crear cliente o conexión", error: error.message };
   }
 },
+
+// 🔹 Aprovisionar cliente/conexión en nodo de red
+aprovisionarConexion: async (zoneName, pkConexion, nroSerie, ZONE_MAPPING) => {
+  try {
+    const correct815Entry = ZONE_MAPPING[zoneName];
+    if (!correct815Entry) 
+      return { message: `No se encontró servidor para zona ${zoneName}` };
+
+    const basicAuthToken = Buffer.from(
+      `${correct815Entry.username}:${correct815Entry.password}`
+    ).toString('base64');
+
+    const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${nroSerie}&json`;
+
+    const response = await axios.get(url, {
+      httpsAgent: agent,
+      headers: { 'Authorization': `Basic ${basicAuthToken}` },
+    });
+
+    // Retorna datos de aprovisionamiento, ej: OLT, ONU, IP, etc.
+    return response.data;
+
+  } catch (error) {
+    console.error(`❌ Error al aprovisionar conexión ${pkConexion}:`, error.message);
+    if (error.response) {
+      console.error('Detalles del error HTTP:', error.response.status, error.response.data);
+    }
+    return { message: 'Error al aprovisionar conexión', error: error.message };
+  }
+},
+
 
 
 

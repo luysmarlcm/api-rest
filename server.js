@@ -146,6 +146,26 @@ app.post("/api/clientes/crear", async (req, res) => {
   }
 });
 
+// Aprovisionar conexión
+app.post('/api/cliente/aprovisionar', async (req, res) => {
+  try {
+    const { zone, pkConexion, numeroDeSerie } = req.body;
+
+    if (!zone || !pkConexion || !numeroDeSerie) {
+      return res.status(400).json({ message: "Faltan datos: zone, pkConexion o numeroDeSerie" });
+    }
+
+    console.log(`🔹 Aprovisionando conexión ${pkConexion} en zona ${zone} con serie ${numeroDeSerie}`);
+
+    const result = await apiService.aprovisionarConexion(zone, pkConexion, numeroDeSerie, ZONE_MAPPING);
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('❌ Error en /api/cliente/aprovisionar:', error.message);
+    res.status(500).json({ message: 'Error al aprovisionar conexión', error: error.message });
+  }
+});
+
 app.get('/api/zonas', (req, res) => {
   try {
     const zonas = Object.entries(ZONE_MAPPING).map(([id, data]) => ({
