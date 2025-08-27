@@ -29,7 +29,7 @@ const ZONE_MAPPING = {
   "BRMOESTE01": {
     url: "https://g1arcofer.815d.net:815",
     username: "wisphubapi",
-    password: "process.env.BASIC_AUTH_PASSWORD_BRMOESTE01",
+    password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01,
     ciudad: 40 
   },
   "BRMNORTE1": {
