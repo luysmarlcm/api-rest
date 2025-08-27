@@ -303,10 +303,11 @@ listAvailableNodes: async (zoneName, ZONE_MAPPING) => {
 },
 
 // 🔹 Verificar ONU e IP disponibles en un nodo
-getAvailableServicesFromNode: async (zoneName, nodoPk, ZONE_MAPPING) => {
+getAvailableServicesFromNode: async (zoneName, nodoPk = 1400, ZONE_MAPPING) => {
   try {
     const correct815Entry = ZONE_MAPPING[zoneName];
-    if (!correct815Entry) return { message: `No se encontró servidor para zona ${zoneName}` };
+    if (!correct815Entry) 
+      return { message: `No se encontró servidor para zona ${zoneName}` };
 
     const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
 
@@ -318,13 +319,16 @@ getAvailableServicesFromNode: async (zoneName, nodoPk, ZONE_MAPPING) => {
       }
     );
 
-    // Filtrar ONU e IP disponibles
-    const onuDisponible = response.data.find(item => item.model.includes("onu") && item.fields.estado === "disponible");
-    const ipDisponible = response.data.find(item => item.model.includes("direccionip") && item.fields.estado === "disponible");
+    const data = response.data.data;
+
+    const dhcpServicio = data?.dhcp?.servicio || null;
+
+    const onuDisponible = dhcpServicio && dhcpServicio.nombre.includes("ONU") ? dhcpServicio : null;
+    const ipDisponible = dhcpServicio && dhcpServicio.ip?.ip_disponible === "1" ? dhcpServicio.ip : null;
 
     return {
-      onu: onuDisponible || null,
-      ip: ipDisponible || null
+      onu: onuDisponible,
+      ip: ipDisponible
     };
   } catch (error) {
     console.error("❌ Error al listar servicios de nodo:", error.message);
@@ -332,7 +336,98 @@ getAvailableServicesFromNode: async (zoneName, nodoPk, ZONE_MAPPING) => {
   }
 },
 
-// 🔹 Crear cliente en 815 (requiere IP asignada)
+listPlans: async (zoneName, ZONE_MAPPING) => {
+    try {
+      const correct815Entry = ZONE_MAPPING[zoneName];
+      if (!correct815Entry)
+        return [];
+
+      const basicAuthToken = Buffer.from(
+        `${correct815Entry.username}:${correct815Entry.password}`
+      ).toString("base64");
+
+      const url = `${correct815Entry.url}/gateway/integracion/entrega/plan/listar?json`;
+
+      const response = await axios.get(url, {
+        httpsAgent: agent,
+        headers: { Authorization: `Basic ${basicAuthToken}` },
+      });
+
+      // Siempre devolver array plano
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+    } catch (error) {
+      console.error("❌ Error en listPlans:", error.message);
+      return [];
+    }
+  },
+
+  // 📌 Listar equipos cliente
+  listEquipos: async (zoneName, ZONE_MAPPING) => {
+    try {
+      const correct815Entry = ZONE_MAPPING[zoneName];
+      if (!correct815Entry)
+        return [];
+
+      const basicAuthToken = Buffer.from(
+        `${correct815Entry.username}:${correct815Entry.password}`
+      ).toString("base64");
+
+      const url = `${correct815Entry.url}/gateway/integracion/hardware/equipocliente/listar?json`;
+
+      const response = await axios.get(url, {
+        httpsAgent: agent,
+        headers: { Authorization: `Basic ${basicAuthToken}` },
+      });
+
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data?.data || [];
+    } catch (error) {
+      console.error("❌ Error en listEquipos:", error.message);
+      return [];
+    }
+  },
+
+  // 📌 Listar accesos DHCP (nodo fijo 1400)
+  listAccesosDhcp: async (zoneName, ZONE_MAPPING) => {
+    try {
+      const correct815Entry = ZONE_MAPPING[zoneName];
+      if (!correct815Entry)
+        return [];
+
+      const basicAuthToken = Buffer.from(
+        `${correct815Entry.username}:${correct815Entry.password}`
+      ).toString("base64");
+
+      const nodoPk = 1400;
+      const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/listar_servicios?pk=${nodoPk}&json`;
+
+      const response = await axios.get(url, {
+        httpsAgent: agent,
+        headers: { Authorization: `Basic ${basicAuthToken}` },
+      });
+
+      const dhcpServicio = response.data?.data?.dhcp?.servicio;
+      if (!dhcpServicio) return [];
+
+      return [
+        {
+          pk: dhcpServicio.pk,
+          nombre: dhcpServicio.nombre,
+          ip: dhcpServicio.ip?.direccion_ip,
+          pkIp: dhcpServicio.ip?.pk_ip_disponible,
+        },
+      ];
+    } catch (error) {
+      console.error("❌ Error en listAccesosDhcp:", error.message);
+      return [];
+    }
+  },
+
+
+// 🔹 Crear cliente en 815 (requiere IP asignada) y luego crear conexión
 createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
   try {
     const correct815Entry = ZONE_MAPPING[zoneName];
@@ -343,33 +438,84 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       `${correct815Entry.username}:${correct815Entry.password}`
     ).toString('base64');
 
-    // ✅ Ciudad obtenida de la zona
     const ciudad = correct815Entry.ciudad;  
+    const {
+      nombre,
+      email,
+      telefono,
+      domicilio,
+      cedula,
+      plan,
+      mac,
+      modoConexion,
+      accesoDhcp,
+      equipoCliente,
+      conector,
+      numeroDeSerie
+    } = formData;
 
-    const { nombre, email, telefono, domicilio, cedula } = formData;
-
-    const createUrl =
+    // 🔹 Crear cliente
+    const createClientUrl =
       `${correct815Entry.url}/gateway/integracion/clientes/cliente/crear/` +
       `?nombre=${encodeURIComponent(nombre)}` +
       `&email=${encodeURIComponent(email)}` +
       `&telefono=${encodeURIComponent(telefono)}` +
-      `&ciudad=${ciudad}` + // 👈 se obtiene automáticamente de ZONE_MAPPING
+      `&ciudad=${ciudad}` +
       `&domicilio=${encodeURIComponent(domicilio)}` +
       `&extra_1=${cedula}` +
       `&direccion_ip=${pkIpDisponible}` +
       `&json`;
 
-    const response = await axios.get(createUrl, {
+    const clientResponse = await axios.get(createClientUrl, {
       httpsAgent: agent,
       headers: { Authorization: `Basic ${basicAuthToken}` },
     });
 
-    return response.data;
+    // 🔹 Detectar si la respuesta es un array y extraer el primer elemento
+    const clientData = Array.isArray(clientResponse.data) ? clientResponse.data[0] : clientResponse.data;
+
+    if (!clientData?.pk) {
+      return { message: "Cliente creado pero no se obtuvo pk", data: clientResponse.data };
+    }
+    const nodoDeRed = 1400; // fijo
+
+    const clientePk = clientData.pk;
+
+
+    // 🔹 Crear conexión para el cliente usando el pk generado
+    const createConexionUrl =
+      `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/crear/` +
+      `?nombre=${encodeURIComponent(nombre)}` +
+      `&ciudad=${ciudad}` +
+      `&cliente=${clientePk}` +
+      `&domicilio=${encodeURIComponent(domicilio)}` +
+      `&plan=${plan}` +
+      `&fecha_de_alta=${new Date().toISOString().split("T")[0]}` +
+      `&direccion_mac=${mac}` +
+      `&modo_de_conexion=${modoConexion}` +
+      `&acceso_dhcp=${accesoDhcp}` +
+      `&direccion_ip=${pkIpDisponible}` +
+      `&numero_de_serie=${numeroDeSerie}` +
+      `&equipo_cliente=${equipoCliente}` +
+      `&nodo_de_red=${nodoDeRed}` + // 🔹 fijo
+      `&conector=${conector}` +
+      `&json`;
+
+    const conexionResponse = await axios.get(createConexionUrl, {
+      httpsAgent: agent,
+      headers: { Authorization: `Basic ${basicAuthToken}` },
+    });
+
+    return {
+      cliente: clientData,
+      conexion: conexionResponse.data,
+    };
   } catch (error) {
-    console.error("❌ Error al crear cliente:", error.message);
-    return { message: "Error al crear cliente", error: error.message };
+    console.error("❌ Error al crear cliente o conexión:", error.message);
+    return { message: "Error al crear cliente o conexión", error: error.message };
   }
 },
+
 
 
 
