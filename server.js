@@ -23,17 +23,20 @@ const ZONE_MAPPING = {
   "GTRE01": {
     url: "https://g3arcofer.815d.net:815",
     username: "wisphubapi",
-    password: process.env.BASIC_AUTH_PASSWORD_GTRE01
+    password: process.env.BASIC_AUTH_PASSWORD_GTRE01,
+    ciudad: 40 
   },
   "BRMOESTE01": {
     url: "https://201.251.240.189:50009",
     username: "wisphubapi",
-    password: "uC0s46Vz5OjQ"
+    password: "uC0s46Vz5OjQ",
+    ciudad: 40 
   },
   "BRMNORTE1": {
     url: "https://g2arcofer.815d.net:815",
     username: "wisphubapi",
-    password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1
+    password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1,
+    ciudad: 40
   },
 };
 
@@ -90,6 +93,39 @@ app.get('/api/clientes/cedula/:cedula', async (req, res) => {
   }
 });
 
+// Listar nodos disponibles
+app.get('/api/nodos/:zona', async (req, res) => {
+  const { zona } = req.params;
+  const nodos = await apiService.listAvailableNodes(zona, ZONE_MAPPING);
+  res.json(nodos);
+});
+
+// Obtener ONU e IP disponibles en un nodo
+app.get('/api/nodo/:zona/:pk', async (req, res) => {
+  const { zona, pk } = req.params;
+  const servicios = await apiService.getAvailableServicesFromNode(zona, pk, ZONE_MAPPING);
+  res.json(servicios);
+});
+
+// Crear cliente
+app.get('/api/clientes/crear', async (req, res) => {
+  const { zona, formData, pkIp } = req.body;
+  const result = await apiService.createClientIn815(zona, formData, pkIp, ZONE_MAPPING);
+  res.json(result);
+});
+
+app.get('/api/zonas', (req, res) => {
+  try {
+    const zonas = Object.entries(ZONE_MAPPING).map(([id, data]) => ({
+      id,
+      nombre: id,       // 👈 o si quieres un alias legible
+      ciudad: data.ciudad
+    }));
+    res.status(200).json(zonas);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener zonas' });
+  }
+});
 
 // Mensaje de inicio del servidor
 app.listen(port, () => {

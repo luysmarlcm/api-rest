@@ -277,6 +277,101 @@ const apiService = {
     }
   },
 
+  
+
+  // 🔹 Listar nodos de red disponibles
+listAvailableNodes: async (zoneName, ZONE_MAPPING) => {
+  try {
+    const correct815Entry = ZONE_MAPPING[zoneName];
+    if (!correct815Entry) return { message: `No se encontró servidor para zona ${zoneName}` };
+
+    const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
+
+    const response = await axios.get(
+      `${correct815Entry.url}/gateway/integracion/hardware/nodored/listar?activo=True&admite_clientes=True&json`,
+      {
+        httpsAgent: agent,
+        headers: { 'Authorization': `Basic ${basicAuthToken}` }
+      }
+    );
+
+    return response.data; // devuelve lista de nodos
+  } catch (error) {
+    console.error("❌ Error al listar nodos:", error.message);
+    return [];
+  }
+},
+
+// 🔹 Verificar ONU e IP disponibles en un nodo
+getAvailableServicesFromNode: async (zoneName, nodoPk, ZONE_MAPPING) => {
+  try {
+    const correct815Entry = ZONE_MAPPING[zoneName];
+    if (!correct815Entry) return { message: `No se encontró servidor para zona ${zoneName}` };
+
+    const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
+
+    const response = await axios.get(
+      `${correct815Entry.url}/gateway/integracion/hardware/nodored/listar_servicios?&pk=${nodoPk}&json`,
+      {
+        httpsAgent: agent,
+        headers: { 'Authorization': `Basic ${basicAuthToken}` }
+      }
+    );
+
+    // Filtrar ONU e IP disponibles
+    const onuDisponible = response.data.find(item => item.model.includes("onu") && item.fields.estado === "disponible");
+    const ipDisponible = response.data.find(item => item.model.includes("direccionip") && item.fields.estado === "disponible");
+
+    return {
+      onu: onuDisponible || null,
+      ip: ipDisponible || null
+    };
+  } catch (error) {
+    console.error("❌ Error al listar servicios de nodo:", error.message);
+    return {};
+  }
+},
+
+// 🔹 Crear cliente en 815 (requiere IP asignada)
+createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
+  try {
+    const correct815Entry = ZONE_MAPPING[zoneName];
+    if (!correct815Entry) 
+      return { message: `No se encontró servidor para zona ${zoneName}` };
+
+    const basicAuthToken = Buffer.from(
+      `${correct815Entry.username}:${correct815Entry.password}`
+    ).toString('base64');
+
+    // ✅ Ciudad obtenida de la zona
+    const ciudad = correct815Entry.ciudad;  
+
+    const { nombre, email, telefono, domicilio, cedula } = formData;
+
+    const createUrl =
+      `${correct815Entry.url}/gateway/integracion/clientes/cliente/crear/` +
+      `?nombre=${encodeURIComponent(nombre)}` +
+      `&email=${encodeURIComponent(email)}` +
+      `&telefono=${encodeURIComponent(telefono)}` +
+      `&ciudad=${ciudad}` + // 👈 se obtiene automáticamente de ZONE_MAPPING
+      `&domicilio=${encodeURIComponent(domicilio)}` +
+      `&extra_1=${cedula}` +
+      `&direccion_ip=${pkIpDisponible}` +
+      `&json`;
+
+    const response = await axios.get(createUrl, {
+      httpsAgent: agent,
+      headers: { Authorization: `Basic ${basicAuthToken}` },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error al crear cliente:", error.message);
+    return { message: "Error al crear cliente", error: error.message };
+  }
+},
+
+
 
  
 enrich815Client: async (cliente815, serverUrl, basicAuthToken) => {
