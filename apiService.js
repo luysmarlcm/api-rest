@@ -483,7 +483,7 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
 
 
     // 🔹 Crear conexión para el cliente usando el pk generado
-    const nombreConexion = `${conector}${nombre}`; 
+    const nombreConexion = `${conector}_${nombre}`;
 
     const createConexionUrl =
       `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/crear/` +
