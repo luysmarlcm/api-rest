@@ -38,12 +38,26 @@ const ZONE_MAPPING = {
     password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1,
     ciudad: 40
   },
+  // "Prueba": {
+  //   url: "https://201.251.240.189:50009",
+  //   username: "wisphubapi",
+  //   password: "uC0s46Vz5OjQ1",
+  //   ciudad: 40
+  // },
+};
+
+const NODO_MAPPING = {
+  GTRE01: 1400,    
+  BRMOESTE01: 1400, 
+  BRMNORTE1: 1400  
 };
 
 const SERVERS_815 = [
   { name: 'S1', url: process.env.URL_815_G1, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01 },
   { name: 'S2', url: process.env.URL_815_G2, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1 },
   { name: 'S3', url: process.env.URL_815_G3, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_GTRE01 },
+  { name: 'Prueba', url: process.env.URL_815_PRUEBA, username: process.env.USER_815_PRUEBA, password: process.env.BASIC_AUTH_PASSWORD_PRUEBA }
+
 ];
 
 // Middleware para parsear JSON
@@ -122,9 +136,33 @@ app.get('/api/planes/:zona', async (req, res) => {
 
 
 // Crear cliente
+// app.post("/api/clientes/crear", async (req, res) => {
+//   try {
+//     const { formData, pkIp, zone } = req.body; // 🔹 zona separada del formData
+
+//     if (!zone) {
+//       return res.status(400).json({ message: "Zona no proporcionada" });
+//     }
+
+//     if (!pkIp) {
+//       return res.status(400).json({ message: "IP disponible no proporcionada" });
+//     }
+
+//     console.log("API: Se ha recibido una solicitud para crear un cliente.");
+//     console.log("Datos recibidos:", { formData, pkIp, zone });
+
+//     const result = await apiService.createClientIn815(zone, formData, pkIp, ZONE_MAPPING);
+
+//     res.json(result);
+//   } catch (error) {
+//     console.error("❌ Error en /api/clientes/crear:", error.message);
+//     res.status(500).json({ message: "Error interno del servidor", error: error.message });
+//   }
+// });
+
 app.post("/api/clientes/crear", async (req, res) => {
   try {
-    const { formData, pkIp, zone } = req.body; // 🔹 zona separada del formData
+    const { formData, pkIp, zone } = req.body;
 
     if (!zone) {
       return res.status(400).json({ message: "Zona no proporcionada" });
@@ -146,8 +184,10 @@ app.post("/api/clientes/crear", async (req, res) => {
   }
 });
 
+
 // Aprovisionar conexión
 app.post('/api/cliente/aprovisionar', async (req, res) => {
+  console.log("Datos recibidos para aprovisionar:", req.body); // <-- Agrega esto
   try {
     const { zone, pkConexion, numeroDeSerie } = req.body;
 
@@ -157,7 +197,19 @@ app.post('/api/cliente/aprovisionar', async (req, res) => {
 
     console.log(`🔹 Aprovisionando conexión ${pkConexion} en zona ${zone} con serie ${numeroDeSerie}`);
 
-    const result = await apiService.aprovisionarConexion(zone, pkConexion, numeroDeSerie, ZONE_MAPPING);
+    // 1️⃣ Consultar ONUs disponibles en el nodo
+    const nodoPk = 1400;
+    const onusDisponibles = await apiService.listAvailableOnus(zone, nodoPk, ZONE_MAPPING);
+
+    // 2️⃣ Usar el serial enviado si está disponible, si no, usar el primero disponible
+    let serialFinal = numeroDeSerie;
+    if (!onusDisponibles.includes(numeroDeSerie)) {
+      serialFinal = onusDisponibles[0];
+      console.log(`⚠️ Serial no disponible, usando el siguiente: ${serialFinal}`);
+    }
+
+    // 3️⃣ Aprovisionar con el serial correcto
+    const result = await apiService.aprovisionarClientePorSerial(zone, pkConexion, serialFinal, ZONE_MAPPING);
 
     res.status(200).json(result);
   } catch (error) {
@@ -226,6 +278,20 @@ app.get('/api/accesos-dhcp/:zona', async (req, res) => {
   }
 });
 
+app.get('/api/onus-disponibles/:zona', async (req, res) => {
+  const { zona } = req.params;
+  const nodoPk = req.query.nodo ? parseInt(req.query.nodo) : 1400; // nodo por defecto
+
+  try {
+    const onus = await apiService.listAvailableOnus(zona, nodoPk, ZONE_MAPPING);
+    res.json({ zona, nodo: nodoPk, onusDisponibles: onus });
+  } catch (error) {
+    console.error('❌ Error al obtener ONUs disponibles:', error.message);
+    res.status(500).json({ message: 'Error al obtener ONUs disponibles', error: error.message });
+  }
+});
+
+
 
 // Iniciar servidor
 app.listen(port, () => {
@@ -234,4 +300,7 @@ app.listen(port, () => {
   console.log(`Planes:   http://localhost:${port}/api/planes/:zona`);
   console.log(`Equipos:  http://localhost:${port}/api/equipos/:zona`);
   console.log(`Accesos DHCP: http://localhost:${port}/api/accesos-dhcp/:zona`);
+  console.log(`Zonas:    http://localhost:${port}/api/zonas`);
+  console.log(`Nodos:    http://localhost:${port}/api/nodos/:zona`);
+  console.log(`ONU Disponibles: http://localhost:${port}/api/onus-disponibles/:zonas`);
 });

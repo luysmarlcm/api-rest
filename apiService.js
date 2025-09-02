@@ -66,7 +66,7 @@ const apiService = {
         cliente.ciudad_815 = mapaCiudades[cliente.ciudad] || 'Desconocida';
         cliente.equipo_cliente = mapaEquipos[cliente.equipo_cliente]?.nombre || 'Desconocido';
         cliente.direccion_ip_815 = mapaIPs[cliente.direccion_ip] || 'Desconocida';
-        cliente.nodo_de_red_815 = mapaNodos[cliente.nodo_de_red]?.nombre || 'Desconocido';
+        cliente.nodo_de_red_815 = mapaNodos[cliente.nodo_de_red]?.nombre || 'Desconocida';
 
         return cliente;
       });
@@ -483,7 +483,7 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
 
 
     // 🔹 Crear conexión para el cliente usando el pk generado
-    const nombreConexion = `${conector}_${nombre}`;
+    const nombreConexion = `${conector} ${nombre}`;
 
     const createConexionUrl =
       `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/crear/` +
@@ -518,8 +518,158 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
   }
 },
 
-// 🔹 Aprovisionar cliente/conexión en nodo de red
-aprovisionarConexion: async (zoneName, pkConexion, nroSerie, ZONE_MAPPING) => {
+//🔹 Aprovisionar cliente/conexión en nodo de red
+// aprovisionarConexion: async (zoneName, pkConexion, nroSerie, ZONE_MAPPING) => {
+//   try {
+//     const correct815Entry = ZONE_MAPPING[zoneName];
+//     if (!correct815Entry) 
+//       return { message: `No se encontró servidor para zona ${zoneName}` };
+
+//     const basicAuthToken = Buffer.from(
+//       `${correct815Entry.username}:${correct815Entry.password}`
+//     ).toString('base64');
+
+//     // Consultar ONUs disponibles antes de aprovisionar
+//     const nodoPk = 1400;
+//     const urlOnus = `${correct815Entry.url}/gateway/integracion/hardware/nodored/onus_sin_aprovisionar?&nodo=${nodoPk}&json`;
+//     const responseOnus = await axios.get(urlOnus, {
+//       httpsAgent: agent,
+//       headers: { 'Authorization': `Basic ${basicAuthToken}` }
+//     });
+//     const onusDisponibles = responseOnus.data?.onus?.map(o => o.split("<br>")[0]) || [];
+
+//     if (!onusDisponibles.includes(nroSerie)) {
+//       return { message: `El serial ${nroSerie} no existe en la lista de ONUs disponibles para aprovisionar.` };
+//     }
+
+//     const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${nroSerie}&json`;
+
+//     const response = await axios.get(url, {
+//       httpsAgent: agent,
+//       headers: { 'Authorization': `Basic ${basicAuthToken}` },
+//     });
+
+//     // Retorna datos de aprovisionamiento, ej: OLT, ONU, IP, etc.
+//     return response.data;
+
+//   } catch (error) {
+//     console.error(`❌ Error al aprovisionar conexión ${pkConexion}:`, error.message);
+//     if (error.response) {
+//       console.error('Detalles del error HTTP:', error.response.status, error.response.data);
+//     }
+//     return { message: 'Error al aprovisionar conexión', error: error.message };
+//   }
+// },
+
+
+
+
+
+aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPPING) => {
+  const correct815Entry = ZONE_MAPPING[zoneName];
+  if (!correct815Entry) 
+    return { message: `No se encontró servidor para zona ${zoneName}` };
+
+  const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
+  const nodoPk = 1400;
+
+  try {
+    // 1️⃣ Listar ONUs disponibles
+    const urlOnus = `${correct815Entry.url}/gateway/integracion/hardware/nodored/onus_sin_aprovisionar?&nodo=${nodoPk}&json`;
+    const responseOnus = await axios.get(urlOnus, {
+      httpsAgent: agent,
+      headers: { Authorization: `Basic ${basicAuthToken}` }
+    });
+    const onusDisponibles = responseOnus.data?.onus?.map(o => o.split("<br>")[0]) || [];
+
+    let serialFinal = serialForm;
+
+    // 2️⃣ Si el serial no está disponible, consultar serial real
+    if (!onusDisponibles.includes(serialForm)) {
+      const urlConsultaSerial = `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/consultar_serial_aprovisionado_olt/?nro_serie=${serialForm}&pk_nodo=${nodoPk}&json`;
+      const responseConsulta = await axios.get(urlConsultaSerial, {
+        httpsAgent: agent,
+        headers: { Authorization: `Basic ${basicAuthToken}` },
+      });
+
+      serialFinal = responseConsulta.data?.serial_real || onusDisponibles[0];
+    }
+
+    // 3️⃣ Obtener el equipo correspondiente para determinar perfil
+    const urlEquipos = `${correct815Entry.url}/gateway/integracion/hardware/equipocliente/listar?json`;
+    const responseEquipos = await axios.get(urlEquipos, {
+      httpsAgent: agent,
+      headers: { Authorization: `Basic ${basicAuthToken}` }
+    });
+
+    // Buscar equipo por serie
+    const equipo = responseEquipos.data.find(e => e.numero_de_serie === serialFinal);
+
+    // 4️⃣ Validar perfil antes de aprovisionar
+    // perfil_conector -> 2, los demás -> 4
+    let perfilId = 4; // valor por defecto
+    if (equipo?.nombre?.toLowerCase().includes("conector")) {
+      perfilId = 2;
+    }
+
+    // 🔹 Implementación del reintento para el aprovisionamiento
+    const MAX_RETRIES = 5;
+    let attempt = 0;
+    let provisioningResult;
+    let aprovisionamientoExitoso = false;
+
+    while (attempt < MAX_RETRIES) {
+      try {
+        // 5️⃣ Aprovisionar la conexión con el perfil correcto
+        const urlAprovisionar = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${serialFinal}&conector_perfil=${perfilId}&json`;
+        const responseAprovisionar = await axios.get(urlAprovisionar, {
+          httpsAgent: agent,
+          headers: { Authorization: `Basic ${basicAuthToken}` },
+        });
+        provisioningResult = responseAprovisionar.data;
+        if (!provisioningResult.message || !provisioningResult.message.includes("No existe conexión válida")) {
+          aprovisionamientoExitoso = true;
+          break;
+        } else {
+          attempt++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+        }
+      } catch (error) {
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+
+    if (!provisioningResult || provisioningResult.message?.includes("No existe conexión válida")) {
+      throw new Error("No se pudo aprovisionar la conexión después de varios intentos.");
+    }
+
+    let mensaje = "Aprovisionamiento exitoso";
+    if (aprovisionamientoExitoso && attempt >= 3) {
+      mensaje = "Aprovisionamiento exitoso después del reintento.";
+    }
+
+    return {
+      estado: "OK",
+      mensaje,
+      serialUsado: serialFinal,
+      perfilUsado: perfilId,
+      resultado: provisioningResult,
+      logs: [
+        `Intentos realizados: ${attempt + 1}`,
+        mensaje
+      ]
+    };
+  } catch (error) {
+    console.error(`❌ Error al aprovisionar conexión ${pkConexion}:`, error.message);
+    if (error.response) {
+      console.error('Detalles HTTP:', error.response.status, error.response.data);
+    }
+    return { message: 'Error al aprovisionar conexión', error: error.message };
+  }
+},
+// 🔹 Listar ONUs disponibles en un nodo de una zona
+listAvailableOnus: async (zoneName, nodoPk = 1400, ZONE_MAPPING) => {
   try {
     const correct815Entry = ZONE_MAPPING[zoneName];
     if (!correct815Entry) 
@@ -529,25 +679,22 @@ aprovisionarConexion: async (zoneName, pkConexion, nroSerie, ZONE_MAPPING) => {
       `${correct815Entry.username}:${correct815Entry.password}`
     ).toString('base64');
 
-    const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${nroSerie}&json`;
+    const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/onus_sin_aprovisionar?&nodo=${nodoPk}&json`;
 
     const response = await axios.get(url, {
       httpsAgent: agent,
-      headers: { 'Authorization': `Basic ${basicAuthToken}` },
+      headers: { 'Authorization': `Basic ${basicAuthToken}` }
     });
 
-    // Retorna datos de aprovisionamiento, ej: OLT, ONU, IP, etc.
-    return response.data;
+    // Limpiar cada número de serie
+    const onus = response.data?.onus?.map(o => o.split("<br>")[0]) || [];
 
+    return onus; // devuelve array de números de serie disponibles
   } catch (error) {
-    console.error(`❌ Error al aprovisionar conexión ${pkConexion}:`, error.message);
-    if (error.response) {
-      console.error('Detalles del error HTTP:', error.response.status, error.response.data);
-    }
-    return { message: 'Error al aprovisionar conexión', error: error.message };
+    console.error(`❌ Error al listar ONUs disponibles para zona ${zoneName}:`, error.message);
+    return [];
   }
 },
-
 
 
 
@@ -606,7 +753,6 @@ enrich815Client: async (cliente815, serverUrl, basicAuthToken) => {
     return cliente815; // Devuelve al menos el cliente original si falla
   }
 },
-
 
 };
 

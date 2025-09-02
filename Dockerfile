@@ -18,7 +18,7 @@ COPY . .
 
 # Expone el puerto en el que tu aplicación va a escuchar.
 # En tu archivo `server.js`, probablemente esté definido como 3000
-EXPOSE 3000
+EXPOSE 4000
 
 # El comando para iniciar la aplicación cuando el contenedor se ejecute
 CMD ["node", "server.js"]
