@@ -187,7 +187,7 @@ app.post("/api/clientes/crear", async (req, res) => {
 
 // Aprovisionar conexión
 app.post('/api/cliente/aprovisionar', async (req, res) => {
-  console.log("Datos recibidos para aprovisionar:", req.body); // <-- Agrega esto
+  console.log("Datos recibidos para aprovisionar:", req.body);
   try {
     const { zone, pkConexion, numeroDeSerie } = req.body;
 
@@ -197,19 +197,8 @@ app.post('/api/cliente/aprovisionar', async (req, res) => {
 
     console.log(`🔹 Aprovisionando conexión ${pkConexion} en zona ${zone} con serie ${numeroDeSerie}`);
 
-    // 1️⃣ Consultar ONUs disponibles en el nodo
-    const nodoPk = 1400;
-    const onusDisponibles = await apiService.listAvailableOnus(zone, nodoPk, ZONE_MAPPING);
-
-    // 2️⃣ Usar el serial enviado si está disponible, si no, usar el primero disponible
-    let serialFinal = numeroDeSerie;
-    if (!onusDisponibles.includes(numeroDeSerie)) {
-      serialFinal = onusDisponibles[0];
-      console.log(`⚠️ Serial no disponible, usando el siguiente: ${serialFinal}`);
-    }
-
-    // 3️⃣ Aprovisionar con el serial correcto
-    const result = await apiService.aprovisionarClientePorSerial(zone, pkConexion, serialFinal, ZONE_MAPPING);
+    // Solo llama al servicio, la lógica de serial está en apiService
+    const result = await apiService.aprovisionarClientePorSerial(zone, pkConexion, numeroDeSerie, ZONE_MAPPING);
 
     res.status(200).json(result);
   } catch (error) {

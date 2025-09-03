@@ -576,41 +576,84 @@ aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPP
   try {
     // 1️⃣ Listar ONUs disponibles
     const urlOnus = `${correct815Entry.url}/gateway/integracion/hardware/nodored/onus_sin_aprovisionar?&nodo=${nodoPk}&json`;
+    console.log("URL ONUs:", urlOnus);
     const responseOnus = await axios.get(urlOnus, {
       httpsAgent: agent,
       headers: { Authorization: `Basic ${basicAuthToken}` }
     });
-    const onusDisponibles = responseOnus.data?.onus?.map(o => o.split("<br>")[0]) || [];
 
-    let serialFinal = serialForm;
+    // Buscar el serial que coincida por los últimos 8 caracteres después del guion
+    const serialEnviadoFinal = serialForm.slice(-8).toUpperCase();
+    const serialFormUpper = serialForm.toUpperCase();
+    let serialParaAprovisionar = null;
 
-    // 2️⃣ Si el serial no está disponible, consultar serial real
-    if (!onusDisponibles.includes(serialForm)) {
-      const urlConsultaSerial = `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/consultar_serial_aprovisionado_olt/?nro_serie=${serialForm}&pk_nodo=${nodoPk}&json`;
-      const responseConsulta = await axios.get(urlConsultaSerial, {
-        httpsAgent: agent,
-        headers: { Authorization: `Basic ${basicAuthToken}` },
-      });
+    for (const o of responseOnus.data?.onus || []) {
+      const hex = o.split("<br>")[0].toUpperCase();
+      const match = o.match(/\(([A-Z]+-[A-Z0-9]+)\)/);
+      const marcaSerial = match ? match[1].toUpperCase() : null;
+      let last8 = null;
 
-      serialFinal = responseConsulta.data?.serial_real || onusDisponibles[0];
+      if (marcaSerial && marcaSerial.includes('-')) {
+        last8 = marcaSerial.split('-')[1];
+      }
+
+      // Compara con todos los formatos posibles
+      if (
+        hex === serialFormUpper || // Coincidencia exacta con el hexadecimal
+        (marcaSerial && marcaSerial === serialFormUpper) || // Coincidencia exacta con el formato SKYW-xxxxxxx o ALCL-xxxxxxx
+        (last8 && last8 === serialEnviadoFinal) || // Coincidencia con los últimos 8 caracteres
+        (hex.slice(-8) === serialEnviadoFinal) // Coincidencia con los últimos 8 del hexadecimal
+      ) {
+        serialParaAprovisionar = hex;
+        break;
+      }
+    }
+
+    if (!serialParaAprovisionar) {
+      return { 
+        message: `El serial ${serialForm} no existe en la lista de ONUs disponibles para aprovisionar.` 
+      };
     }
 
     // 3️⃣ Obtener el equipo correspondiente para determinar perfil
     const urlEquipos = `${correct815Entry.url}/gateway/integracion/hardware/equipocliente/listar?json`;
+    console.log("URL Equipos:", urlEquipos);
     const responseEquipos = await axios.get(urlEquipos, {
       httpsAgent: agent,
       headers: { Authorization: `Basic ${basicAuthToken}` }
     });
 
     // Buscar equipo por serie
-    const equipo = responseEquipos.data.find(e => e.numero_de_serie === serialFinal);
+    const equipo = responseEquipos.data.find(e => e.numero_de_serie === serialParaAprovisionar);
 
-    // 4️⃣ Validar perfil antes de aprovisionar
-    // perfil_conector -> 2, los demás -> 4
+    // 🔹 Log de información del equipo y perfil
+    console.log("Equipo encontrado para serial:", serialParaAprovisionar, equipo);
+    console.log("Nombre del equipo:", equipo?.nombre);
+
+    // Consultar perfiles de conector disponibles
+    const urlPerfiles = `${correct815Entry.url}/gateway/integracion/hardware/nodored/olts_habilitadas_para_aprovisionar?&json`;
+    console.log("URL Perfiles:", urlPerfiles);
+    const responsePerfiles = await axios.get(urlPerfiles, {
+      httpsAgent: agent,
+      headers: { Authorization: `Basic ${basicAuthToken}` }
+    });
+    console.log("Respuesta perfiles OLT:", responsePerfiles.data);
+
+    // Aquí debes buscar el perfil que corresponda al serial/equipo
+    // Ejemplo: si el perfil depende del nombre del equipo o del serial
     let perfilId = 4; // valor por defecto
     if (equipo?.nombre?.toLowerCase().includes("conector")) {
       perfilId = 2;
     }
+
+    // Si el perfil depende de la respuesta del endpoint, ajusta aquí:
+    if (responsePerfiles.data && Array.isArray(responsePerfiles.data)) {
+      // Busca el perfil adecuado según tu lógica de negocio
+      // Ejemplo: por modelo, por serial, etc.
+      // perfilId = responsePerfiles.data.find(...);
+    }
+
+    console.log("Perfil usado para aprovisionar:", perfilId);
 
     // 🔹 Implementación del reintento para el aprovisionamiento
     const MAX_RETRIES = 5;
@@ -621,7 +664,8 @@ aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPP
     while (attempt < MAX_RETRIES) {
       try {
         // 5️⃣ Aprovisionar la conexión con el perfil correcto
-        const urlAprovisionar = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${serialFinal}&conector_perfil=${perfilId}&json`;
+        const urlAprovisionar = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${serialParaAprovisionar}&conector_perfil=${perfilId}&json`;
+        console.log("URL Aprovisionar:", urlAprovisionar);
         const responseAprovisionar = await axios.get(urlAprovisionar, {
           httpsAgent: agent,
           headers: { Authorization: `Basic ${basicAuthToken}` },
@@ -652,7 +696,7 @@ aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPP
     return {
       estado: "OK",
       mensaje,
-      serialUsado: serialFinal,
+      serialUsado: serialParaAprovisionar,
       perfilUsado: perfilId,
       resultado: provisioningResult,
       logs: [
@@ -744,7 +788,7 @@ enrich815Client: async (cliente815, serverUrl, basicAuthToken) => {
       ciudad_815: mapaCiudades[cliente815.fields.ciudad] || 'Desconocida',
       equipo_cliente: mapaEquipos[cliente815.fields.equipo_cliente]?.nombre || 'Desconocido',
       direccion_ip_815: mapaIPs[cliente815.fields.direccion_ip] || 'Desconocida',
-      nodo_de_red_815: mapaNodos[cliente815.fields.nodo_de_red]?.nombre || 'Desconocido'
+      nodo_de_red_815: mapaNodos[cliente815.fields.nodo_de_red]?.nombre || 'Desconocida'
     };
 
     return clienteEnriquecido;
