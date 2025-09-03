@@ -1,204 +1,214 @@
-// server.js
-// Archivo principal del servidor Express
+  // server.js
+  // Archivo principal del servidor Express
 
-import express from 'express';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import apiService from './apiService.js';
-import cors from 'cors';
+  import express from 'express';
+  import dotenv from 'dotenv';
+  import path from 'path';
+  import { fileURLToPath } from 'url';
+  import apiService from './apiService.js';
+  import cors from 'cors';
 
-// Obtener la ruta del directorio actual
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+  // Obtener la ruta del directorio actual
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
 
-// Cargar variables de entorno del archivo .env desde la ruta absoluta
-dotenv.config();
+  // Cargar variables de entorno del archivo .env desde la ruta absoluta
+  dotenv.config();
 
-const app = express();
-const port = process.env.PORT || 3000;
+  const app = express();
+  const port = process.env.PORT || 3000;
 
-// Mapeo de zonas a URLs y credenciales
-const ZONE_MAPPING = {
-  "GTRE01": {
-    url: "https://g3arcofer.815d.net:815",
-    username: "wisphubapi",
-    password: process.env.BASIC_AUTH_PASSWORD_GTRE01,
-    ciudad: 40 
-  },
-  "BRMOESTE01": {
-    url: "https://g1arcofer.815d.net:815",
-    username: "wisphubapi",
-    password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01,
-    ciudad: 40 
-  },
-  "BRMNORTE1": {
-    url: "https://g2arcofer.815d.net:815",
-    username: "wisphubapi",
-    password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1,
-    ciudad: 40
-  },
-  // "Prueba": {
-  //   url: "https://201.251.240.189:50009",
-  //   username: "wisphubapi",
-  //   password: "uC0s46Vz5OjQ1",
-  //   ciudad: 40
-  // },
-};
+  // Mapeo de zonas a URLs y credenciales
+  const ZONE_MAPPING = {
+    "GTRE01": {
+      url: "https://g3arcofer.815d.net:815",
+      username: "wisphubapi",
+      password: process.env.BASIC_AUTH_PASSWORD_GTRE01,
+      ciudad: 40 
+    },
+    "BRMOESTE01": {
+      url: "https://g1arcofer.815d.net:815",
+      username: "wisphubapi",
+      password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01,
+      ciudad: 40 
+    },
+    "BRMNORTE1": {
+      url: "https://g2arcofer.815d.net:815",
+      username: "wisphubapi",
+      password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1,
+      ciudad: 40
+    },
+    // "Prueba": {
+    //   url: "https://201.251.240.189:50009",
+    //   username: "wisphubapi",
+    //   password: "uC0s46Vz5OjQ1",
+    //   ciudad: 40
+    // },
+  };
 
-const NODO_MAPPING = {
-  GTRE01: 1400,    
-  BRMOESTE01: 1400, 
-  BRMNORTE1: 1400  
-};
+  const NODO_MAPPING = {
+    GTRE01: 1400,    
+    BRMOESTE01: 1400, 
+    BRMNORTE1: 1400  
+  };
 
-const SERVERS_815 = [
-  { name: 'S1', url: process.env.URL_815_G1, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01 },
-  { name: 'S2', url: process.env.URL_815_G2, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1 },
-  { name: 'S3', url: process.env.URL_815_G3, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_GTRE01 },
-  { name: 'Prueba', url: process.env.URL_815_PRUEBA, username: process.env.USER_815_PRUEBA, password: process.env.BASIC_AUTH_PASSWORD_PRUEBA }
+  const SERVERS_815 = [
+    { name: 'S1', url: process.env.URL_815_G1, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMOESTE01 },
+    { name: 'S2', url: process.env.URL_815_G2, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_BRMNORTE1 },
+    { name: 'S3', url: process.env.URL_815_G3, username: process.env.USER_815_G1, password: process.env.BASIC_AUTH_PASSWORD_GTRE01 },
+    { name: 'Prueba', url: process.env.URL_815_PRUEBA, username: process.env.USER_815_PRUEBA, password: process.env.BASIC_AUTH_PASSWORD_PRUEBA }
 
-];
+  ];
 
-// Middleware para parsear JSON
-app.use(express.json());
+  // Middleware para parsear JSON
+  app.use(express.json());
 
-// Middleware de CORS
-app.use(cors());
+  // Middleware de CORS
+  app.use(cors());
 
-// Ruta principal para la API de clientes
-app.get('/api/clientes', async (req, res) => {
-  const { zona } = req.query;
-  try {
-    let clientes;
-    if (zona) {
-      console.log(`--- Solicitud para clientes de la zona: ${zona} ---`);
-      clientes = await apiService.fetchAndCombineClientsByZone(zona, ZONE_MAPPING);
-    } else {
-      console.log('--- Solicitud para todos los clientes (sin especificar zona) ---');
-      clientes = await apiService.fetchAndCombineAllClients(SERVERS_815);
+  // Ruta principal para la API de clientes
+  app.get('/api/clientes', async (req, res) => {
+    const { zona } = req.query;
+    try {
+      let clientes;
+      if (zona) {
+        console.log(`--- Solicitud para clientes de la zona: ${zona} ---`);
+        clientes = await apiService.fetchAndCombineClientsByZone(zona, ZONE_MAPPING);
+      } else {
+        console.log('--- Solicitud para todos los clientes (sin especificar zona) ---');
+        clientes = await apiService.fetchAndCombineAllClients(SERVERS_815);
+      }
+      res.status(200).json(clientes);
+    } catch (error) {
+      console.error('❌ Error en el servidor al procesar la solicitud.');
+      console.error('Mensaje de error:', error.message);
+      const errorMessage = error.response?.data?.error || 'Error desconocido en el servidor';
+      const errorStatus = error.response?.status || 500;
+      res.status(errorStatus).json({ error: `Error en la operación: ${errorMessage}` });
     }
-    res.status(200).json(clientes);
-  } catch (error) {
-    console.error('❌ Error en el servidor al procesar la solicitud.');
-    console.error('Mensaje de error:', error.message);
-    const errorMessage = error.response?.data?.error || 'Error desconocido en el servidor';
-    const errorStatus = error.response?.status || 500;
-    res.status(errorStatus).json({ error: `Error en la operación: ${errorMessage}` });
-  }
-});
+  });
 
-// Ruta para obtener clientes por cédula.
-app.get('/api/clientes/cedula/:cedula', async (req, res) => {
-  const { cedula } = req.params;
-  console.log(`--- Solicitud para cliente con cédula: ${cedula} y su zona ---`);
-  try {
-    const clientePorCedula = await apiService.fetchClientByCedula(cedula, ZONE_MAPPING);
-    res.status(200).json(clientePorCedula);
-  } catch (error) {
-    console.error('❌ Error en el servidor al procesar la solicitud por cédula.');
-    console.error('Mensaje de error:', error.message);
-    const errorMessage = error.response?.data?.error || 'Error desconocido en el servidor';
-    const errorStatus = error.response?.status || 500;
-    res.status(errorStatus).json({ error: `Error en la operación: ${errorMessage}` });
-  }
-});
-
-// Listar nodos disponibles
-app.get('/api/nodos/:zona', async (req, res) => {
-  const { zona } = req.params;
-  const nodos = await apiService.listAvailableNodes(zona, ZONE_MAPPING);
-  res.json(nodos);
-});
-
-// Obtener ONU e IP disponibles en un nodo
-app.get('/api/nodo/:zona/:pk', async (req, res) => {
-  const { zona, pk } = req.params;
-  const servicios = await apiService.getAvailableServicesFromNode(zona, pk, ZONE_MAPPING);
-  res.json(servicios);
-});
-
-// RUTA en server.js
-app.get('/api/planes/:zona', async (req, res) => {
-  const { zona } = req.params;
-  try {
-    const planes = await apiService.listPlans(zona, ZONE_MAPPING);
-    const data = planes.map(p => ({
-      pk: p.pk,
-      nombre: p.fields.nombre
-    }));
-    res.json(data);
-  } catch (error) {
-    console.error("❌ Error al listar planes:", error.message);
-    res.status(500).json({ message: "Error al listar planes", error: error.message });
-  }
-});
-
-
-// Crear cliente
-// app.post("/api/clientes/crear", async (req, res) => {
-//   try {
-//     const { formData, pkIp, zone } = req.body; // 🔹 zona separada del formData
-
-//     if (!zone) {
-//       return res.status(400).json({ message: "Zona no proporcionada" });
-//     }
-
-//     if (!pkIp) {
-//       return res.status(400).json({ message: "IP disponible no proporcionada" });
-//     }
-
-//     console.log("API: Se ha recibido una solicitud para crear un cliente.");
-//     console.log("Datos recibidos:", { formData, pkIp, zone });
-
-//     const result = await apiService.createClientIn815(zone, formData, pkIp, ZONE_MAPPING);
-
-//     res.json(result);
-//   } catch (error) {
-//     console.error("❌ Error en /api/clientes/crear:", error.message);
-//     res.status(500).json({ message: "Error interno del servidor", error: error.message });
-//   }
-// });
-
-app.post("/api/clientes/crear", async (req, res) => {
-  try {
-    const { formData, pkIp, zone } = req.body;
-
-    if (!zone) {
-      return res.status(400).json({ message: "Zona no proporcionada" });
+  // Ruta para obtener clientes por cédula.
+  app.get('/api/clientes/cedula/:cedula', async (req, res) => {
+    const { cedula } = req.params;
+    console.log(`--- Solicitud para cliente con cédula: ${cedula} y su zona ---`);
+    try {
+      const clientePorCedula = await apiService.fetchClientByCedula(cedula, ZONE_MAPPING);
+      res.status(200).json(clientePorCedula);
+    } catch (error) {
+      console.error('❌ Error en el servidor al procesar la solicitud por cédula.');
+      console.error('Mensaje de error:', error.message);
+      const errorMessage = error.response?.data?.error || 'Error desconocido en el servidor';
+      const errorStatus = error.response?.status || 500;
+      res.status(errorStatus).json({ error: `Error en la operación: ${errorMessage}` });
     }
+  });
 
-    if (!pkIp) {
-      return res.status(400).json({ message: "IP disponible no proporcionada" });
+  // Listar nodos disponibles
+  app.get('/api/nodos/:zona', async (req, res) => {
+    const { zona } = req.params;
+    const nodos = await apiService.listAvailableNodes(zona, ZONE_MAPPING);
+    res.json(nodos);
+  });
+
+  // Obtener ONU e IP disponibles en un nodo
+  app.get('/api/nodo/:zona/:pk', async (req, res) => {
+    const { zona, pk } = req.params;
+    const servicios = await apiService.getAvailableServicesFromNode(zona, pk, ZONE_MAPPING);
+    res.json(servicios);
+  });
+
+  // RUTA en server.js
+  app.get('/api/planes/:zona', async (req, res) => {
+    const { zona } = req.params;
+    try {
+      const planes = await apiService.listPlans(zona, ZONE_MAPPING);
+      const data = planes.map(p => ({
+        pk: p.pk,
+        nombre: p.fields.nombre
+      }));
+      res.json(data);
+    } catch (error) {
+      console.error("❌ Error al listar planes:", error.message);
+      res.status(500).json({ message: "Error al listar planes", error: error.message });
     }
+  });
 
-    console.log("API: Se ha recibido una solicitud para crear un cliente.");
-    console.log("Datos recibidos:", { formData, pkIp, zone });
 
-    const result = await apiService.createClientIn815(zone, formData, pkIp, ZONE_MAPPING);
+  // Crear cliente
+  // app.post("/api/clientes/crear", async (req, res) => {
+  //   try {
+  //     const { formData, pkIp, zone } = req.body; // 🔹 zona separada del formData
 
-    res.json(result);
-  } catch (error) {
-    console.error("❌ Error en /api/clientes/crear:", error.message);
-    res.status(500).json({ message: "Error interno del servidor", error: error.message });
-  }
-});
+  //     if (!zone) {
+  //       return res.status(400).json({ message: "Zona no proporcionada" });
+  //     }
 
+  //     if (!pkIp) {
+  //       return res.status(400).json({ message: "IP disponible no proporcionada" });
+  //     }
+
+  //     console.log("API: Se ha recibido una solicitud para crear un cliente.");
+  //     console.log("Datos recibidos:", { formData, pkIp, zone });
+
+  //     const result = await apiService.createClientIn815(zone, formData, pkIp, ZONE_MAPPING);
+
+  //     res.json(result);
+  //   } catch (error) {
+  //     console.error("❌ Error en /api/clientes/crear:", error.message);
+  //     res.status(500).json({ message: "Error interno del servidor", error: error.message });
+  //   }
+  // });
+
+  app.post("/api/clientes/crear", async (req, res) => {
+    try {
+      const { formData, pkIp, zone } = req.body;
+
+      if (!zone) {
+        return res.status(400).json({ message: "Zona no proporcionada" });
+      }
+
+      if (!pkIp) {
+        return res.status(400).json({ message: "IP disponible no proporcionada" });
+      }
+
+      console.log("API: Se ha recibido una solicitud para crear un cliente.");
+      console.log("Datos recibidos:", { formData, pkIp, zone });
+
+      const result = await apiService.createClientIn815(zone, formData, pkIp, ZONE_MAPPING);
+
+      res.json(result);
+    } catch (error) {
+      console.error("❌ Error en /api/clientes/crear:", error.message);
+      res.status(500).json({ message: "Error interno del servidor", error: error.message });
+    }
+  });
+
+
+  // Aprovisionar conexión
 
 // Aprovisionar conexión
 app.post('/api/cliente/aprovisionar', async (req, res) => {
   console.log("Datos recibidos para aprovisionar:", req.body);
   try {
-    const { zone, pkConexion, numeroDeSerie } = req.body;
+    const { zone, pkConexion, numeroDeSerie, conectorPerfil } = req.body; // ✅ ahora incluye conectorPerfil
 
-    if (!zone || !pkConexion || !numeroDeSerie) {
-      return res.status(400).json({ message: "Faltan datos: zone, pkConexion o numeroDeSerie" });
+    if (!zone || !pkConexion || !numeroDeSerie || !conectorPerfil) {
+      return res.status(400).json({
+        message: "Faltan datos: zone, pkConexion, numeroDeSerie o conectorPerfil"
+      });
     }
 
-    console.log(`🔹 Aprovisionando conexión ${pkConexion} en zona ${zone} con serie ${numeroDeSerie}`);
+    console.log(`🔹 Aprovisionando conexión ${pkConexion} en zona ${zone} con serie ${numeroDeSerie} y perfil ${conectorPerfil}`);
 
-    // Solo llama al servicio, la lógica de serial está en apiService
-    const result = await apiService.aprovisionarClientePorSerial(zone, pkConexion, numeroDeSerie, ZONE_MAPPING);
+    // ✅ ahora sí pasamos conectorPerfil al servicio
+    const result = await apiService.aprovisionarClientePorSerial(
+      zone,
+      pkConexion,
+      numeroDeSerie,
+      ZONE_MAPPING,
+      conectorPerfil
+    );
 
     res.status(200).json(result);
   } catch (error) {
@@ -207,89 +217,123 @@ app.post('/api/cliente/aprovisionar', async (req, res) => {
   }
 });
 
-app.get('/api/zonas', (req, res) => {
-  try {
-    const zonas = Object.entries(ZONE_MAPPING).map(([id, data]) => ({
-      id,
-      nombre: id,
-      ciudad: data.ciudad
-    }));
-    res.status(200).json(zonas);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener zonas' });
-  }
-});
 
-// ✅ NUEVAS RUTAS
-// 📌 Listar planes
-// Listar planes
-app.get('/api/planes/:zona', async (req, res) => {
+
+  app.get('/api/zonas', (req, res) => {
+    try {
+      const zonas = Object.entries(ZONE_MAPPING).map(([id, data]) => ({
+        id,
+        nombre: id,
+        ciudad: data.ciudad
+      }));
+      res.status(200).json(zonas);
+    } catch (error) {
+      res.status(500).json({ error: 'Error al obtener zonas' });
+    }
+  });
+
+  // ✅ NUEVAS RUTAS
+  // 📌 Listar planes
+  // Listar planes
+  app.get('/api/planes/:zona', async (req, res) => {
+    const { zona } = req.params;
+    try {
+      const planes = await apiService.listPlans(zona, ZONE_MAPPING);
+      const formatted = planes.map((p) => ({
+        pk: p.pk,
+        nombre: p.fields?.nombre || "Sin nombre",
+      }));
+      res.json(formatted);
+    } catch (error) {
+      console.error("❌ Error al listar planes:", error.message);
+      res.status(500).json({ error: "Error al listar planes" });
+    }
+  });
+
+  // Listar equipos cliente
+  app.get('/api/equipos/:zona', async (req, res) => {
+    const { zona } = req.params;
+    try {
+      const equipos = await apiService.listEquipos(zona, ZONE_MAPPING);
+      const formatted = equipos.map((e) => ({
+        pk: e.pk,
+        nombre: e.fields?.nombre || "Sin nombre",
+      }));
+      res.json(formatted);
+    } catch (error) {
+      console.error("❌ Error al listar equipos:", error.message);
+      res.status(500).json({ error: "Error al listar equipos" });
+    }
+  });
+
+  // Listar accesos DHCP
+  app.get('/api/accesos-dhcp/:zona', async (req, res) => {
+    const { zona } = req.params;
+    try {
+      const accesos = await apiService.listAccesosDhcp(zona, ZONE_MAPPING);
+      console.log("Accesos DHCP desde API:", accesos); // 🔹 log aquí
+      res.json(accesos); 
+    } catch (error) {
+      console.error("❌ Error en /api/accesos-dhcp/:zona:", error.message);
+      res.status(500).json([]);
+    }
+  });
+
+  app.get('/api/onus-disponibles/:zona', async (req, res) => {
+    const { zona } = req.params;
+    const nodoPk = req.query.nodo ? parseInt(req.query.nodo) : 1400; // nodo por defecto
+
+    try {
+      const onus = await apiService.listAvailableOnus(zona, nodoPk, ZONE_MAPPING);
+      res.json({ zona, nodo: nodoPk, onusDisponibles: onus });
+    } catch (error) {
+      console.error('❌ Error al obtener ONUs disponibles:', error.message);
+      res.status(500).json({ message: 'Error al obtener ONUs disponibles', error: error.message });
+    }
+  });
+
+  // server.js
+app.get('/api/conectores-perfil/:zona', async (req, res) => {
   const { zona } = req.params;
   try {
-    const planes = await apiService.listPlans(zona, ZONE_MAPPING);
-    const formatted = planes.map((p) => ({
-      pk: p.pk,
-      nombre: p.fields?.nombre || "Sin nombre",
-    }));
-    res.json(formatted);
-  } catch (error) {
-    console.error("❌ Error al listar planes:", error.message);
-    res.status(500).json({ error: "Error al listar planes" });
-  }
-});
+    const data = await apiService.getConectoresPerfil(zona, ZONE_MAPPING);
 
-// Listar equipos cliente
-app.get('/api/equipos/:zona', async (req, res) => {
-  const { zona } = req.params;
-  try {
-    const equipos = await apiService.listEquipos(zona, ZONE_MAPPING);
-    const formatted = equipos.map((e) => ({
-      pk: e.pk,
-      nombre: e.fields?.nombre || "Sin nombre",
-    }));
-    res.json(formatted);
-  } catch (error) {
-    console.error("❌ Error al listar equipos:", error.message);
-    res.status(500).json({ error: "Error al listar equipos" });
-  }
-});
+    // 🔹 Transformar el JSON en una lista de perfiles fáciles de consumir
+    const perfiles = [];
 
-// Listar accesos DHCP
-app.get('/api/accesos-dhcp/:zona', async (req, res) => {
-  const { zona } = req.params;
-  try {
-    const accesos = await apiService.listAccesosDhcp(zona, ZONE_MAPPING);
-    console.log("Accesos DHCP desde API:", accesos); // 🔹 log aquí
-    res.json(accesos); 
-  } catch (error) {
-    console.error("❌ Error en /api/accesos-dhcp/:zona:", error.message);
-    res.status(500).json([]);
-  }
-});
+    Object.entries(data).forEach(([oltNombre, oltData]) => {
+      oltData.perfiles.forEach(p => {
+        perfiles.push({
+          olt: oltNombre,
+          pkOlt: oltData.pk,
+          ciudad: oltData.ciudad,
+          marca: oltData.marca,
+          nombre: p.nombre,
+          conector: p.conector,
+          esDefault: p.es_default,
+          tipo: p.tipo,
+        });
+      });
+    });
 
-app.get('/api/onus-disponibles/:zona', async (req, res) => {
-  const { zona } = req.params;
-  const nodoPk = req.query.nodo ? parseInt(req.query.nodo) : 1400; // nodo por defecto
-
-  try {
-    const onus = await apiService.listAvailableOnus(zona, nodoPk, ZONE_MAPPING);
-    res.json({ zona, nodo: nodoPk, onusDisponibles: onus });
+    res.json(perfiles);
   } catch (error) {
-    console.error('❌ Error al obtener ONUs disponibles:', error.message);
-    res.status(500).json({ message: 'Error al obtener ONUs disponibles', error: error.message });
+    console.error("❌ Error en /api/conectores-perfil/:zona:", error.message);
+    res.status(500).json({ error: "Error al obtener conectores perfil" });
   }
 });
 
 
 
-// Iniciar servidor
-app.listen(port, () => {
-  console.log(`✅ Servidor Express en puerto ${port}`);
-  console.log(`Clientes: http://localhost:${port}/api/clientes`);
-  console.log(`Planes:   http://localhost:${port}/api/planes/:zona`);
-  console.log(`Equipos:  http://localhost:${port}/api/equipos/:zona`);
-  console.log(`Accesos DHCP: http://localhost:${port}/api/accesos-dhcp/:zona`);
-  console.log(`Zonas:    http://localhost:${port}/api/zonas`);
-  console.log(`Nodos:    http://localhost:${port}/api/nodos/:zona`);
-  console.log(`ONU Disponibles: http://localhost:${port}/api/onus-disponibles/:zonas`);
-});
+
+  // Iniciar servidor
+  app.listen(port, () => {
+    console.log(`✅ Servidor Express en puerto ${port}`);
+    console.log(`Clientes: http://localhost:${port}/api/clientes`);
+    console.log(`Planes:   http://localhost:${port}/api/planes/:zona`);
+    console.log(`Equipos:  http://localhost:${port}/api/equipos/:zona`);
+    console.log(`Accesos DHCP: http://localhost:${port}/api/accesos-dhcp/:zona`);
+    console.log(`Zonas:    http://localhost:${port}/api/zonas`);
+    console.log(`Nodos:    http://localhost:${port}/api/nodos/:zona`);
+    console.log(`ONU Disponibles: http://localhost:${port}/api/onus-disponibles/:zonas`);
+  });

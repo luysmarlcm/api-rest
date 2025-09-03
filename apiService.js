@@ -436,7 +436,7 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
 
     const basicAuthToken = Buffer.from(
       `${correct815Entry.username}:${correct815Entry.password}`
-    ).toString('base64');
+    ).toString("base64");
 
     const ciudad = correct815Entry.ciudad;  
     const {
@@ -451,7 +451,8 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       accesoDhcp,
       equipoCliente,
       conector,
-      numeroDeSerie
+      // 👇 este ya viene del frontend como el serial de la ONU seleccionada
+      numeroDeSerie,  
     } = formData;
 
     // 🔹 Crear cliente
@@ -471,20 +472,19 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       headers: { Authorization: `Basic ${basicAuthToken}` },
     });
 
-    // 🔹 Detectar si la respuesta es un array y extraer el primer elemento
-    const clientData = Array.isArray(clientResponse.data) ? clientResponse.data[0] : clientResponse.data;
+    const clientData = Array.isArray(clientResponse.data)
+      ? clientResponse.data[0]
+      : clientResponse.data;
 
     if (!clientData?.pk) {
       return { message: "Cliente creado pero no se obtuvo pk", data: clientResponse.data };
     }
-    const nodoDeRed = 1400; // fijo
 
     const clientePk = clientData.pk;
-
-
-    // 🔹 Crear conexión para el cliente usando el pk generado
+    const nodoDeRed = 1400; // fijo
     const nombreConexion = `${conector} ${nombre}`;
 
+    // 🔹 Crear conexión
     const createConexionUrl =
       `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/crear/` +
       `?nombre=${encodeURIComponent(nombreConexion)}` +
@@ -497,9 +497,9 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       `&modo_de_conexion=${modoConexion}` +
       `&acceso_dhcp=${accesoDhcp}` +
       `&direccion_ip=${pkIpDisponible}` +
-      `&numero_de_serie=${numeroDeSerie}` +
+      `&numero_de_serie=${numeroDeSerie}` + // 👈 se manda el serial ONU seleccionado
       `&equipo_cliente=${equipoCliente}` +
-      `&nodo_de_red=${nodoDeRed}` + // 🔹 fijo
+      `&nodo_de_red=${nodoDeRed}` +
       `&conector=${conector}` +
       `&json`;
 
@@ -517,6 +517,7 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
     return { message: "Error al crear cliente o conexión", error: error.message };
   }
 },
+
 
 //🔹 Aprovisionar cliente/conexión en nodo de red
 // aprovisionarConexion: async (zoneName, pkConexion, nroSerie, ZONE_MAPPING) => {
@@ -565,144 +566,37 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
 
 
 
-aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPPING) => {
+aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPPING, conectorPerfil) => {
   const correct815Entry = ZONE_MAPPING[zoneName];
   if (!correct815Entry) 
     return { message: `No se encontró servidor para zona ${zoneName}` };
 
   const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
-  const nodoPk = 1400;
 
   try {
-    // 1️⃣ Listar ONUs disponibles
-    const urlOnus = `${correct815Entry.url}/gateway/integracion/hardware/nodored/onus_sin_aprovisionar?&nodo=${nodoPk}&json`;
-    console.log("URL ONUs:", urlOnus);
-    const responseOnus = await axios.get(urlOnus, {
+    const serialParaAprovisionar = serialForm.toUpperCase();
+    console.log("Serial recibido del form:", serialParaAprovisionar);
+    console.log("Conector perfil recibido:", conectorPerfil, typeof conectorPerfil);
+
+    if (!conectorPerfil) {
+      return { message: "Debe seleccionar un conector/perfil para aprovisionar." };
+    }
+
+    const conectorPerfilFinal = typeof conectorPerfil === "number" ? conectorPerfil : Number(conectorPerfil);
+    const urlAprovisionar = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${serialParaAprovisionar}&conector_perfil=${conectorPerfilFinal}&json`;
+    console.log("URL Aprovisionar:", urlAprovisionar);
+
+    const responseAprovisionar = await axios.get(urlAprovisionar, {
       httpsAgent: agent,
-      headers: { Authorization: `Basic ${basicAuthToken}` }
+      headers: { Authorization: `Basic ${basicAuthToken}` },
     });
-
-    // Buscar el serial que coincida por los últimos 8 caracteres después del guion
-    const serialEnviadoFinal = serialForm.slice(-8).toUpperCase();
-    const serialFormUpper = serialForm.toUpperCase();
-    let serialParaAprovisionar = null;
-
-    for (const o of responseOnus.data?.onus || []) {
-      const hex = o.split("<br>")[0].toUpperCase();
-      const match = o.match(/\(([A-Z]+-[A-Z0-9]+)\)/);
-      const marcaSerial = match ? match[1].toUpperCase() : null;
-      let last8 = null;
-
-      if (marcaSerial && marcaSerial.includes('-')) {
-        last8 = marcaSerial.split('-')[1];
-      }
-
-      // Compara con todos los formatos posibles
-      if (
-        hex === serialFormUpper || // Coincidencia exacta con el hexadecimal
-        (marcaSerial && marcaSerial === serialFormUpper) || // Coincidencia exacta con el formato SKYW-xxxxxxx o ALCL-xxxxxxx
-        (last8 && last8 === serialEnviadoFinal) || // Coincidencia con los últimos 8 caracteres
-        (hex.slice(-8) === serialEnviadoFinal) // Coincidencia con los últimos 8 del hexadecimal
-      ) {
-        serialParaAprovisionar = hex;
-        break;
-      }
-    }
-
-    if (!serialParaAprovisionar) {
-      return { 
-        message: `El serial ${serialForm} no existe en la lista de ONUs disponibles para aprovisionar.` 
-      };
-    }
-
-    // 3️⃣ Obtener el equipo correspondiente para determinar perfil
-    const urlEquipos = `${correct815Entry.url}/gateway/integracion/hardware/equipocliente/listar?json`;
-    console.log("URL Equipos:", urlEquipos);
-    const responseEquipos = await axios.get(urlEquipos, {
-      httpsAgent: agent,
-      headers: { Authorization: `Basic ${basicAuthToken}` }
-    });
-
-    // Buscar equipo por serie
-    const equipo = responseEquipos.data.find(e => e.numero_de_serie === serialParaAprovisionar);
-
-    // 🔹 Log de información del equipo y perfil
-    console.log("Equipo encontrado para serial:", serialParaAprovisionar, equipo);
-    console.log("Nombre del equipo:", equipo?.nombre);
-
-    // Consultar perfiles de conector disponibles
-    const urlPerfiles = `${correct815Entry.url}/gateway/integracion/hardware/nodored/olts_habilitadas_para_aprovisionar?&json`;
-    console.log("URL Perfiles:", urlPerfiles);
-    const responsePerfiles = await axios.get(urlPerfiles, {
-      httpsAgent: agent,
-      headers: { Authorization: `Basic ${basicAuthToken}` }
-    });
-    console.log("Respuesta perfiles OLT:", responsePerfiles.data);
-
-    // Aquí debes buscar el perfil que corresponda al serial/equipo
-    // Ejemplo: si el perfil depende del nombre del equipo o del serial
-    let perfilId = 4; // valor por defecto
-    if (equipo?.nombre?.toLowerCase().includes("conector")) {
-      perfilId = 2;
-    }
-
-    // Si el perfil depende de la respuesta del endpoint, ajusta aquí:
-    if (responsePerfiles.data && Array.isArray(responsePerfiles.data)) {
-      // Busca el perfil adecuado según tu lógica de negocio
-      // Ejemplo: por modelo, por serial, etc.
-      // perfilId = responsePerfiles.data.find(...);
-    }
-
-    console.log("Perfil usado para aprovisionar:", perfilId);
-
-    // 🔹 Implementación del reintento para el aprovisionamiento
-    const MAX_RETRIES = 5;
-    let attempt = 0;
-    let provisioningResult;
-    let aprovisionamientoExitoso = false;
-
-    while (attempt < MAX_RETRIES) {
-      try {
-        // 5️⃣ Aprovisionar la conexión con el perfil correcto
-        const urlAprovisionar = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${serialParaAprovisionar}&conector_perfil=${perfilId}&json`;
-        console.log("URL Aprovisionar:", urlAprovisionar);
-        const responseAprovisionar = await axios.get(urlAprovisionar, {
-          httpsAgent: agent,
-          headers: { Authorization: `Basic ${basicAuthToken}` },
-        });
-        provisioningResult = responseAprovisionar.data;
-        if (!provisioningResult.message || !provisioningResult.message.includes("No existe conexión válida")) {
-          aprovisionamientoExitoso = true;
-          break;
-        } else {
-          attempt++;
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-        }
-      } catch (error) {
-        attempt++;
-        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-      }
-    }
-
-    if (!provisioningResult || provisioningResult.message?.includes("No existe conexión válida")) {
-      throw new Error("No se pudo aprovisionar la conexión después de varios intentos.");
-    }
-
-    let mensaje = "Aprovisionamiento exitoso";
-    if (aprovisionamientoExitoso && attempt >= 3) {
-      mensaje = "Aprovisionamiento exitoso después del reintento.";
-    }
 
     return {
       estado: "OK",
-      mensaje,
+      mensaje: "Aprovisionamiento ejecutado",
       serialUsado: serialParaAprovisionar,
-      perfilUsado: perfilId,
-      resultado: provisioningResult,
-      logs: [
-        `Intentos realizados: ${attempt + 1}`,
-        mensaje
-      ]
+      perfilUsado: conectorPerfil,
+      resultado: responseAprovisionar.data
     };
   } catch (error) {
     console.error(`❌ Error al aprovisionar conexión ${pkConexion}:`, error.message);
@@ -712,6 +606,7 @@ aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPP
     return { message: 'Error al aprovisionar conexión', error: error.message };
   }
 },
+
 // 🔹 Listar ONUs disponibles en un nodo de una zona
 listAvailableOnus: async (zoneName, nodoPk = 1400, ZONE_MAPPING) => {
   try {
@@ -730,8 +625,9 @@ listAvailableOnus: async (zoneName, nodoPk = 1400, ZONE_MAPPING) => {
       headers: { 'Authorization': `Basic ${basicAuthToken}` }
     });
 
-    // Limpiar cada número de serie
-    const onus = response.data?.onus?.map(o => o.split("<br>")[0]) || [];
+    console.log("Respuesta cruda ONUs:", response.data);
+
+    const onus = response.data?.onus || [];
 
     return onus; // devuelve array de números de serie disponibles
   } catch (error) {
@@ -797,6 +693,32 @@ enrich815Client: async (cliente815, serverUrl, basicAuthToken) => {
     return cliente815; // Devuelve al menos el cliente original si falla
   }
 },
+
+// apiService.js
+getConectoresPerfil: async (zoneName, ZONE_MAPPING) => {
+  try {
+    const correct815Entry = ZONE_MAPPING[zoneName];
+    if (!correct815Entry)
+      return { message: `No se encontró servidor para zona ${zoneName}` };
+
+    const basicAuthToken = Buffer.from(
+      `${correct815Entry.username}:${correct815Entry.password}`
+    ).toString("base64");
+
+    const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/olts_habilitadas_para_aprovisionar?&json`;
+
+    const response = await axios.get(url, {
+      httpsAgent: agent,
+      headers: { Authorization: `Basic ${basicAuthToken}` },
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error en getConectoresPerfil:", error.message);
+    return {};
+  }
+},
+
 
 };
 
