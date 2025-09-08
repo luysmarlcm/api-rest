@@ -109,8 +109,6 @@ const apiService = {
       return [];
     }
   },
-
-    // 🔹 Unir datos de clientes por zona específica
    // 🔹 Unir datos de clientes por zona específica
   fetchAndCombineClientsByZone: async (zoneName, ZONE_MAPPING) => {
     try {
@@ -197,85 +195,116 @@ const apiService = {
   },
 
   // 🔹 Buscar cliente por cédula
-  fetchClientByCedula: async (cedula, ZONE_MAPPING) => {
+fetchClientByCedula: async (cedula, ZONE_MAPPING) => {
+  try {
+    const apiKey = process.env.WISPHUB_API_KEY;
+    const apiUrl = process.env.API_URL;
+
+    console.log(`--- Buscando cliente con cédula ${cedula} en WispHub ---`);
+    
+    // 1️⃣ Buscar cliente en WispHub
+    const responseWispHub = await axios.get(`${apiUrl}/api/clientes/?cedula=${cedula}`, {
+      headers: {
+        'Authorization': `Api-Key ${apiKey}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const clientesWispHub = responseWispHub.data.results;
+    if (!clientesWispHub || clientesWispHub.length === 0) {
+      return { message: `Cliente con cédula ${cedula} no encontrado en WispHub.` };
+    }
+
+    // 2️⃣ Procesar todos los clientes encontrados
+  const clientesProcesados = await Promise.all(
+  clientesWispHub.map(async (cliente) => {
+    const idServicio = cliente.id_servicio;
+    if (!idServicio) {
+      return { ...cliente, warning: 'Sin id_servicio en WispHub' };
+    }
+
+    const zoneName = cliente.zona.nombre;
+    const correct815Entry = ZONE_MAPPING[zoneName];
+    if (!correct815Entry) {
+      return { ...cliente, warning: `Zona ${zoneName} no encontrada en mapping` };
+    }
+
+    const basicAuthToken = Buffer.from(
+      `${correct815Entry.username}:${correct815Entry.password}`
+    ).toString('base64');
+    const direct815SearchUrl = `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/listar?&json&conector=${idServicio}`;
+
+    let clientes815 = [];
     try {
-      const apiKey = process.env.WISPHUB_API_KEY;
-      const apiUrl = process.env.API_URL;
-
-      console.log(`--- Buscando cliente con cédula ${cedula} en WispHub ---`);
-      
-      // 1️⃣ Buscar cliente en WispHub
-      const responseWispHub = await axios.get(`${apiUrl}/api/clientes/?cedula=${cedula}`, {
-        headers: {
-          'Authorization': `Api-Key ${apiKey}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      const foundClientWispHub = responseWispHub.data.results[0];
-      if (!foundClientWispHub) {
-        return { message: `Cliente con cédula ${cedula} no encontrado en WispHub.` };
-      }
-
-      // 2️⃣ Obtener información del servidor 815 correspondiente a la zona
-      const zoneName = foundClientWispHub.zona.nombre;
-      const correct815Entry = ZONE_MAPPING[zoneName];
-      if (!correct815Entry) {
-        return { message: `No se encontró una URL de servidor 815 para la zona: ${zoneName}` };
-      }
-
-      console.log(`✅ Cliente encontrado en WispHub. Zona: ${zoneName}.`);
-      
-      const basicAuthToken = Buffer.from(`${correct815Entry.username}:${correct815Entry.password}`).toString('base64');
-      const direct815SearchUrl = `${correct815Entry.url}/gateway/integracion/clientes/cuentasimple/listar?&json&extra_1=${cedula}`;
-      
-      // 3️⃣ Buscar cliente en 815
       const response815 = await axios.get(direct815SearchUrl, {
         httpsAgent: agent,
-        headers: { 'Authorization': `Basic ${basicAuthToken}` },
+        headers: { Authorization: `Basic ${basicAuthToken}` },
       });
-
-      const foundClient815 = response815.data[0];
-      if (!foundClient815) {
-        return { message: `Cliente con cédula ${cedula} no encontrado en 815.` };
-      }
-
-      // 4️⃣ Enriquecer cliente 815
-      const enrichedClient = await apiService.enrich815Client(foundClient815, correct815Entry.url, basicAuthToken);
-
-      // 5️⃣ Consultar diagnóstico usando pk de conexión
-      let diagnostico = {};
-      try {
-        const pkConexion = foundClient815.pk; // reemplaza si tu pk real está en otro campo
-        const diagnosticoResponse = await axios.get(
-          `${correct815Entry.url}/gateway/integracion/hardware/nodored/diagnosticar_multiapi/?pk_conexion=${pkConexion}&json`,
-          {
-            httpsAgent: agent,
-            headers: { 'Authorization': `Basic ${basicAuthToken}` },
-          }
-        );
-        diagnostico = diagnosticoResponse.data; // contiene conexion, olt, onu, etc.
-      } catch (error) {
-        console.error('❌ Error al consultar diagnóstico:', error.message);
-      }
-
-      // 6️⃣ Unir todo al JSON final
-      const clientesUnidos = { 
-        ...foundClientWispHub, 
-        ...enrichedClient,
-        ...diagnostico // 🔹 hace spread de todas las propiedades del diagnóstico
-      };
-      
-      return clientesUnidos;
-
+      clientes815 = response815.data || [];
     } catch (error) {
-      console.error('❌ Error al procesar la búsqueda por cédula.', error.message);
-      if (error.response) {
-        console.error('Detalles del error HTTP:', error.response.status, error.response.data);
-      }
-      throw error;
+      console.error(`❌ Error consultando 815 para id_servicio=${idServicio}:`, error.message);
     }
-  },
+
+    if (clientes815.length === 0) {
+      return { ...cliente, warning: `Cliente con id_servicio ${idServicio} no encontrado en 815` };
+    }
+
+    // 🔹 Procesar cada contrato del cliente
+    return Promise.all(
+  clientes815.map(async (foundClient815) => {
+    // 🔹 Enriquecer cliente con datos de 815
+    const enrichedClient = await apiService.enrich815Client(
+      foundClient815,
+      correct815Entry.url,
+      basicAuthToken
+    );
+
+    // 🔹 JSON del cliente
+    const clienteJSON = {
+      ...cliente,
+      ...enrichedClient,
+    };
+
+    // 🔹 JSON del diagnóstico
+    let diagnosticoJSON = {};
+    try {
+      const pkConexion = foundClient815.pk;
+      const diagnosticoResponse = await axios.get(
+        `${correct815Entry.url}/gateway/integracion/hardware/nodored/diagnosticar_multiapi/?pk_conexion=${pkConexion}&json`,
+        {
+          httpsAgent: agent,
+          headers: { Authorization: `Basic ${basicAuthToken}` },
+        }
+      );
+      diagnosticoJSON = diagnosticoResponse.data;
+    } catch (error) {
+      console.error('❌ Error al consultar diagnóstico:', error.message);
+      diagnosticoJSON = { error: 'No se pudo obtener diagnóstico' };
+    }
+
+    // 🔹 Retornar 2 JSON separados
+    return {
+      cliente: clienteJSON,
+      diagnostico: diagnosticoJSON,
+    };
+  })
+);
+  })
+);
+
+// 🔹 Flatten en caso de que haya arrays anidados
+const clientesFinal = clientesProcesados.flat();
+
+// 🔹 Retornar
+return clientesFinal.length === 1 ? clientesFinal[0] : clientesFinal;
+  } catch (error) {
+    console.error('❌ Error al procesar la búsqueda por cédula.', error.message);
+    if (error.response) {
+      console.error('Detalles del error HTTP:', error.response.status, error.response.data);
+    }
+    throw error;
+  }
+},
 
   
 
@@ -451,7 +480,6 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       accesoDhcp,
       equipoCliente,
       conector,
-      // 👇 este ya viene del frontend como el serial de la ONU seleccionada
       numeroDeSerie,  
     } = formData;
 
@@ -497,11 +525,15 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       `&modo_de_conexion=${modoConexion}` +
       `&acceso_dhcp=${accesoDhcp}` +
       `&direccion_ip=${pkIpDisponible}` +
-      `&numero_de_serie=${numeroDeSerie}` + // 👈 se manda el serial ONU seleccionado
+      `&numero_de_serie=${numeroDeSerie}` +
       `&equipo_cliente=${equipoCliente}` +
       `&nodo_de_red=${nodoDeRed}` +
       `&conector=${conector}` +
+      `&extra_1=${cedula}` +
       `&json`;
+
+      console.log("👉 URL de creación de conexión:", createConexionUrl);
+      
 
     const conexionResponse = await axios.get(createConexionUrl, {
       httpsAgent: agent,
@@ -517,53 +549,6 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
     return { message: "Error al crear cliente o conexión", error: error.message };
   }
 },
-
-
-//🔹 Aprovisionar cliente/conexión en nodo de red
-// aprovisionarConexion: async (zoneName, pkConexion, nroSerie, ZONE_MAPPING) => {
-//   try {
-//     const correct815Entry = ZONE_MAPPING[zoneName];
-//     if (!correct815Entry) 
-//       return { message: `No se encontró servidor para zona ${zoneName}` };
-
-//     const basicAuthToken = Buffer.from(
-//       `${correct815Entry.username}:${correct815Entry.password}`
-//     ).toString('base64');
-
-//     // Consultar ONUs disponibles antes de aprovisionar
-//     const nodoPk = 1400;
-//     const urlOnus = `${correct815Entry.url}/gateway/integracion/hardware/nodored/onus_sin_aprovisionar?&nodo=${nodoPk}&json`;
-//     const responseOnus = await axios.get(urlOnus, {
-//       httpsAgent: agent,
-//       headers: { 'Authorization': `Basic ${basicAuthToken}` }
-//     });
-//     const onusDisponibles = responseOnus.data?.onus?.map(o => o.split("<br>")[0]) || [];
-
-//     if (!onusDisponibles.includes(nroSerie)) {
-//       return { message: `El serial ${nroSerie} no existe en la lista de ONUs disponibles para aprovisionar.` };
-//     }
-
-//     const url = `${correct815Entry.url}/gateway/integracion/hardware/nodored/aprovisionar_multiapi/?pk_conexion=${pkConexion}&nro_serie=${nroSerie}&json`;
-
-//     const response = await axios.get(url, {
-//       httpsAgent: agent,
-//       headers: { 'Authorization': `Basic ${basicAuthToken}` },
-//     });
-
-//     // Retorna datos de aprovisionamiento, ej: OLT, ONU, IP, etc.
-//     return response.data;
-
-//   } catch (error) {
-//     console.error(`❌ Error al aprovisionar conexión ${pkConexion}:`, error.message);
-//     if (error.response) {
-//       console.error('Detalles del error HTTP:', error.response.status, error.response.data);
-//     }
-//     return { message: 'Error al aprovisionar conexión', error: error.message };
-//   }
-// },
-
-
-
 
 
 aprovisionarClientePorSerial: async (zoneName, pkConexion, serialForm, ZONE_MAPPING, conectorPerfil) => {
@@ -638,8 +623,6 @@ listAvailableOnus: async (zoneName, nodoPk = 1400, ZONE_MAPPING) => {
 
 
 
-
- 
 enrich815Client: async (cliente815, serverUrl, basicAuthToken) => {
   try {
     // Obtener ciudades, equipos, IPs y nodos
@@ -694,7 +677,6 @@ enrich815Client: async (cliente815, serverUrl, basicAuthToken) => {
   }
 },
 
-// apiService.js
 getConectoresPerfil: async (zoneName, ZONE_MAPPING) => {
   try {
     const correct815Entry = ZONE_MAPPING[zoneName];
@@ -720,8 +702,37 @@ getConectoresPerfil: async (zoneName, ZONE_MAPPING) => {
 },
 
 
+fetchDiagnosticoByPk: async (pkConexion, zoneName, ZONE_MAPPING) => {
+  try {
+    const server815 = ZONE_MAPPING[zoneName];
+    if (!server815) {
+      throw new Error(`Zona ${zoneName} no encontrada en mapping`);
+    }
+
+    const basicAuthToken = Buffer.from(
+      `${server815.username}:${server815.password}`
+    ).toString("base64");
+
+    const diagnosticoResponse = await axios.get(
+      `${server815.url}/gateway/integracion/hardware/nodored/diagnosticar_multiapi/?pk_conexion=${pkConexion}&json`,
+      {
+        httpsAgent: agent,
+        headers: {
+          Authorization: `Basic ${basicAuthToken}`,
+        },
+      }
+    );
+
+    return diagnosticoResponse.data;
+  } catch (error) {
+    console.error("❌ Error al consultar diagnóstico:", error.message);
+    return { error: "No se pudo obtener diagnóstico" };
+  }
+},
+
+
 };
 
-export default apiService;
+export default apiService; 
 
 

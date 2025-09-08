@@ -14,3 +14,5 @@ services:
       - .:/usr/src/app
     # Reinicia el contenedor automáticamente si falla
     restart: always
+    env_file:
+      - .env

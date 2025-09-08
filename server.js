@@ -89,20 +89,32 @@
   });
 
   // Ruta para obtener clientes por cédula.
-  app.get('/api/clientes/cedula/:cedula', async (req, res) => {
-    const { cedula } = req.params;
-    console.log(`--- Solicitud para cliente con cédula: ${cedula} y su zona ---`);
-    try {
-      const clientePorCedula = await apiService.fetchClientByCedula(cedula, ZONE_MAPPING);
-      res.status(200).json(clientePorCedula);
-    } catch (error) {
-      console.error('❌ Error en el servidor al procesar la solicitud por cédula.');
-      console.error('Mensaje de error:', error.message);
-      const errorMessage = error.response?.data?.error || 'Error desconocido en el servidor';
-      const errorStatus = error.response?.status || 500;
-      res.status(errorStatus).json({ error: `Error en la operación: ${errorMessage}` });
+app.get('/api/clientes/cedula/:cedula', async (req, res) => {
+  const { cedula } = req.params;
+  console.log(`--- Solicitud para cliente con cédula: ${cedula} ---`);
+
+  try {
+    const clientePorCedula = await apiService.fetchClientByCedula(cedula, ZONE_MAPPING);
+
+    if (Array.isArray(clientePorCedula)) {
+      console.log(`✅ Se encontraron múltiples clientes (${clientePorCedula.length}) para la cédula ${cedula}`);
+    } else if (clientePorCedula?.message) {
+      console.log(`⚠️ ${clientePorCedula.message}`);
+    } else {
+      console.log(`✅ Cliente único encontrado para la cédula ${cedula}`);
     }
-  });
+
+    res.status(200).json(clientePorCedula);
+
+  } catch (error) {
+    console.error('❌ Error en el servidor al procesar la solicitud por cédula.');
+    console.error('Mensaje de error:', error.message);
+
+    const errorMessage = error.response?.data?.error || 'Error desconocido en el servidor';
+    const errorStatus = error.response?.status || 500;
+    res.status(errorStatus).json({ error: `Error en la operación: ${errorMessage}` });
+  }
+});
 
   // Listar nodos disponibles
   app.get('/api/nodos/:zona', async (req, res) => {
@@ -135,31 +147,6 @@
   });
 
 
-  // Crear cliente
-  // app.post("/api/clientes/crear", async (req, res) => {
-  //   try {
-  //     const { formData, pkIp, zone } = req.body; // 🔹 zona separada del formData
-
-  //     if (!zone) {
-  //       return res.status(400).json({ message: "Zona no proporcionada" });
-  //     }
-
-  //     if (!pkIp) {
-  //       return res.status(400).json({ message: "IP disponible no proporcionada" });
-  //     }
-
-  //     console.log("API: Se ha recibido una solicitud para crear un cliente.");
-  //     console.log("Datos recibidos:", { formData, pkIp, zone });
-
-  //     const result = await apiService.createClientIn815(zone, formData, pkIp, ZONE_MAPPING);
-
-  //     res.json(result);
-  //   } catch (error) {
-  //     console.error("❌ Error en /api/clientes/crear:", error.message);
-  //     res.status(500).json({ message: "Error interno del servidor", error: error.message });
-  //   }
-  // });
-
   app.post("/api/clientes/crear", async (req, res) => {
     try {
       const { formData, pkIp, zone } = req.body;
@@ -187,7 +174,6 @@
 
   // Aprovisionar conexión
 
-// Aprovisionar conexión
 app.post('/api/cliente/aprovisionar', async (req, res) => {
   console.log("Datos recibidos para aprovisionar:", req.body);
   try {
@@ -323,6 +309,23 @@ app.get('/api/conectores-perfil/:zona', async (req, res) => {
   }
 });
 
+app.get('/api/diagnostico-nodo', async (req, res) => {
+  try {
+    const { pk, zona } = req.query;
+
+    if (!pk || !zona) {
+      return res.status(400).json({ error: 'Falta el parámetro pk o zona' });
+    }
+
+    const diagnostico = await apiService.fetchDiagnosticoByPk(pk, zona, ZONE_MAPPING);
+    return res.status(200).json(diagnostico);
+  } catch (error) {
+    console.error("❌ Error en /api/diagnostico-nodo:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 
 
@@ -336,4 +339,6 @@ app.get('/api/conectores-perfil/:zona', async (req, res) => {
     console.log(`Zonas:    http://localhost:${port}/api/zonas`);
     console.log(`Nodos:    http://localhost:${port}/api/nodos/:zona`);
     console.log(`ONU Disponibles: http://localhost:${port}/api/onus-disponibles/:zonas`);
+    console.log(`Conectores Perfil: http://localhost:${port}/api/conectores-perfil/:zona`);
+    console.log(`Diagnóstico Nodo: http://localhost:${port}/api/diagnostico-nodo?cedula=1234567890`);
   });
