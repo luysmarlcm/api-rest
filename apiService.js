@@ -480,7 +480,9 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       accesoDhcp,
       equipoCliente,
       conector,
-      numeroDeSerie,  
+      numeroDeSerie,
+      lat,
+      lng,  
     } = formData;
 
     // 🔹 Crear cliente
@@ -530,6 +532,8 @@ createClientIn815: async (zoneName, formData, pkIpDisponible, ZONE_MAPPING) => {
       `&nodo_de_red=${nodoDeRed}` +
       `&conector=${conector}` +
       `&extra_1=${cedula}` +
+      `&lat=${lat || ""}` +
+      `&lng=${lng || ""}` +
       `&json`;
 
       console.log("👉 URL de creación de conexión:", createConexionUrl);
