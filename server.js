@@ -278,7 +278,7 @@ app.post('/api/cliente/aprovisionar', async (req, res) => {
     }
   });
 
-  // server.js
+
 app.get('/api/conectores-perfil/:zona', async (req, res) => {
   const { zona } = req.params;
   try {
@@ -325,6 +325,75 @@ app.get('/api/diagnostico-nodo', async (req, res) => {
   }
 });
 
+// Listar clientes por zona con paginación
+  app.get('/api/clientes/zonas/:zona', async (req, res) => {
+    const { zona } = req.params;
+    const page = parseInt(req.query.page) || 1;   // página actual
+    const limit = parseInt(req.query.limit) || 10; // por defecto 10 clientes por página
+
+    try {
+      console.log(`--- Solicitud de clientes paginados para zona: ${zona}, página ${page} ---`);
+      
+      const clientes = await apiService.fetchAndCombineClientsByZone(zona, ZONE_MAPPING);
+
+      if (!Array.isArray(clientes)) {
+        return res.status(404).json({ error: `No se encontraron clientes para la zona: ${zona}` });
+      }
+
+      // Calcular paginación
+      const total = clientes.length;
+      const totalPages = Math.ceil(total / limit);
+      const start = (page - 1) * limit;
+      const end = start + limit;
+      const paginated = clientes.slice(start, end);
+
+      res.status(200).json({
+        zona,
+        page,
+        limit,
+        total,
+        totalPages,
+        data: paginated,
+      });
+
+    } catch (error) {
+      console.error(`❌ Error en /api/clientes/zonas/${zona}:`, error.message);
+      res.status(500).json({ error: "Error interno al obtener clientes", details: error.message });
+    }
+  });
+
+
+app.get("/api/wisphub/clientes", async (req, res) => {
+	try {
+		const limit = parseInt(req.query.limit) || 10;
+		const offset = parseInt(req.query.offset) || 0;
+
+		const clientes = await apiService.fetchWispHubClients(limit, offset);
+
+		res.json(clientes);
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+app.get("/api/wisphub/buscar", async (req, res) => {
+	try {
+		const { cedula } = req.query;
+
+		if (!cedula) {
+			return res
+				.status(400)
+				.json({ error: "Debe enviar una cédula como query param" });
+		}
+
+		const data = await apiService.fetchWisphubCedula(cedula);
+		res.json(data); // ✅ aquí sí usamos res
+	} catch (err) {
+		res
+			.status(500)
+			.json({ error: "No se pudo obtener el cliente", detalle: err.message });
+	}
+});
 
 
 
